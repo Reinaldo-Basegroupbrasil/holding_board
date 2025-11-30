@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@supabase/supabase-js';
+// Importação segura para funcionar local e na web
+import { createClient } from 'https://esm.sh/@supabase/supabase-js';
 import { ShoppingCart, Check, Trash2, Plus, X, Save, RefreshCw, Pencil, Store, Home, ListRestart, Search, Settings } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const getEnv = (key) => { try { return import.meta.env[key]; } catch { return ''; } };
+const supabaseUrl = getEnv('VITE_SUPABASE_URL');
+const supabaseKey = getEnv('VITE_SUPABASE_ANON_KEY');
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 export default function App() {
@@ -15,7 +17,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   
-  // Estados Persistentes (Salvos no navegador)
+  // Estados Persistentes
   const [shoppingMode, setShoppingMode] = useState(() => localStorage.getItem('mercado_mode') === 'true');
   const [marginPct, setMarginPct] = useState(() => Number(localStorage.getItem('mercado_margin')) || 15);
   
@@ -23,11 +25,14 @@ export default function App() {
   const [categoryFilter, setCategoryFilter] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Estado para controlar se o usuário quer digitar uma categoria nova
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+
   const [formData, setFormData] = useState({
     nome: '', marca: '', categoria: '', corredor: '', quantidade: 1, preco_unitario: ''
   });
 
-  // Salvar preferências sempre que mudarem
+  // Salvar preferências
   useEffect(() => { localStorage.setItem('mercado_mode', shoppingMode); }, [shoppingMode]);
   useEffect(() => { localStorage.setItem('mercado_margin', marginPct); }, [marginPct]);
 
@@ -55,7 +60,6 @@ export default function App() {
   const filteredProducts = useMemo(() => {
     let list = products;
 
-    // 1. Pesquisa (Nome ou Marca)
     if (searchTerm) {
       const lowerTerm = searchTerm.toLowerCase();
       list = list.filter(p => 
@@ -64,24 +68,20 @@ export default function App() {
       );
     }
 
-    // 2. Filtro de Categoria (Só no modo Casa)
     if (!shoppingMode && categoryFilter !== 'Todos') {
       list = list.filter(p => p.categoria === categoryFilter);
     }
 
-    // 3. Modos de Exibição
     if (shoppingMode) {
-      // MODO MERCADO: Só o que vou comprar
       list = list.filter(p => p.comprar);
       // Ordenação: 1º Não pegos, 2º Pegos (final), 3º Corredor
       list = list.sort((a, b) => {
-        if (a.in_cart !== b.in_cart) return a.in_cart ? 1 : -1; // Jogar pegos pro final
+        if (a.in_cart !== b.in_cart) return a.in_cart ? 1 : -1;
         const cA = parseInt(a.corredor) || 999;
         const cB = parseInt(b.corredor) || 999;
         return cA - cB;
       });
     } else {
-      // MODO CASA: Ordem alfabética
       list = list.sort((a, b) => a.nome.localeCompare(b.nome));
     }
     return list;
@@ -99,9 +99,7 @@ export default function App() {
   };
 
   const toggleInCart = async (id, status) => {
-    // Atualiza na tela na hora
     setProducts(prev => prev.map(p => p.id === id ? { ...p, in_cart: !status } : p));
-    // Manda pro banco
     if (supabase) await supabase.from('produtos').update({ in_cart: !status }).eq('id', id);
   };
 
@@ -110,17 +108,16 @@ export default function App() {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Excluir?')) {
+    if (window.confirm('Tem certeza que deseja EXCLUIR este produto?')) {
       setProducts(prev => prev.filter(p => p.id !== id));
       if (supabase) await supabase.from('produtos').delete().eq('id', id);
     }
   };
 
   const resetList = async () => {
-    if (window.confirm('Iniciar novo mês? (Desmarcar tudo)')) {
+    if (window.confirm('Iniciar novo mês? (Isso vai desmarcar todos os produtos)')) {
       setProducts(prev => prev.map(p => ({ ...p, comprar: false, in_cart: false })));
       if (supabase) {
-        // Zera 'comprar' e 'in_cart'
         const ids = products.filter(p => p.comprar || p.in_cart).map(p => p.id);
         for (const id of ids) await supabase.from('produtos').update({ comprar: false, in_cart: false }).eq('id', id);
       }
@@ -130,11 +127,13 @@ export default function App() {
   // --- MODAL ---
   const handleEdit = (p) => {
     setEditingId(p.id);
+    setIsCustomCategory(false); // Reseta modo de categoria
     setFormData({ nome: p.nome, marca: p.marca||'', categoria: p.categoria||'Geral', corredor: p.corredor||'', quantidade: p.quantidade||1, preco_unitario: p.preco_unitario||'' });
     setIsModalOpen(true);
   };
   const handleNew = () => {
     setEditingId(null);
+    setIsCustomCategory(false); // Reseta modo de categoria
     setFormData({ nome: '', marca: '', categoria: 'Geral', corredor: '', quantidade: 1, preco_unitario: '' });
     setIsModalOpen(true);
   };
@@ -147,11 +146,11 @@ export default function App() {
         if (editingId) await supabase.from('produtos').update(payload).eq('id', editingId);
         else await supabase.from('produtos').insert([{ ...payload, comprar: true }]);
       }
-      setIsModalOpen(false); // Fecha o modal e volta pra lista
+      setIsModalOpen(false); 
     } catch (err) { alert(err.message); } finally { setSaving(false); }
   };
 
-  // Categorias únicas + Sugestões
+  // Categorias únicas
   const uniqueCategories = useMemo(() => {
     const padrao = ['Geral', 'Hortifruti', 'Limpeza', 'Higiene', 'Carnes', 'Bebidas'];
     const doBanco = products.map(p => p.categoria).filter(Boolean);
@@ -164,7 +163,6 @@ export default function App() {
       {/* HEADER */}
       <header className={`text-white p-4 sticky top-0 z-20 shadow-lg transition-colors duration-300 ${shoppingMode ? 'bg-blue-600' : 'bg-emerald-600'}`}>
         <div className="max-w-3xl mx-auto">
-          {/* Linha Superior: Título e Botão de Modo */}
           <div className="flex justify-between items-center mb-3">
             <div className="flex items-center gap-2">
               {shoppingMode ? <ShoppingCart className="animate-bounce" /> : <Home />}
@@ -179,7 +177,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Linha Inferior: Totais e Margem */}
           <div className="grid grid-cols-2 gap-4 items-end">
             <div>
               <p className="text-[10px] opacity-80 uppercase">Total Gôndola</p>
@@ -199,14 +196,10 @@ export default function App() {
             </div>
           </div>
 
-          {/* Barra de Pesquisa */}
           <div className="mt-3 relative">
             <Search className="absolute left-3 top-2.5 text-white/60" size={16} />
             <input 
-              type="text" 
-              placeholder="Buscar produto..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              type="text" placeholder="Buscar produto..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-black/10 text-white placeholder-white/60 rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:bg-black/20 transition"
             />
             {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2.5 text-white/60 hover:text-white"><X size={16}/></button>}
@@ -214,7 +207,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* FILTROS (Apenas modo Casa) */}
+      {/* FILTROS (Modo Casa) */}
       {!shoppingMode && (
         <div className="sticky top-[160px] bg-slate-50 z-10 border-b border-slate-200 shadow-sm overflow-x-auto">
           <div className="max-w-3xl mx-auto p-2 flex gap-2">
@@ -233,9 +226,7 @@ export default function App() {
         {!loading && filteredProducts.map(product => (
           <div key={product.id} className={`bg-white p-4 rounded-xl shadow-sm border-l-4 flex flex-col gap-3 transition-all duration-300 ${shoppingMode && product.in_cart ? 'border-gray-300 opacity-50 bg-gray-50 scale-95' : product.comprar ? 'border-emerald-500 opacity-100' : 'border-slate-300 opacity-60'}`}>
             
-            {/* TOPO DO CARD */}
             <div className="flex items-start gap-3">
-              {/* Botão de Check Principal */}
               <button 
                 onClick={() => shoppingMode ? toggleInCart(product.id, product.in_cart) : toggleComprar(product.id, product.comprar)}
                 className={`mt-1 w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors 
@@ -254,7 +245,12 @@ export default function App() {
                   </h3>
                   <div className="flex gap-1">
                     <button onClick={() => handleEdit(product)} className="text-slate-300 hover:text-emerald-600 p-2"><Pencil size={18}/></button>
-                    {!shoppingMode && <button onClick={() => handleDelete(product.id)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18}/></button>}
+                    {/* LIXEIRA VERMELHA DESTAQUE */}
+                    {!shoppingMode && (
+                      <button onClick={() => handleDelete(product.id)} className="text-red-500 bg-red-50 hover:bg-red-100 p-2 rounded-lg border border-red-100 transition">
+                        <Trash2 size={18}/>
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-1 text-xs text-slate-500">
@@ -265,7 +261,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* BARRA DE PREÇO (Só aparece se estiver marcado para comprar) */}
             {product.comprar && (
               <div className={`flex items-center p-2 rounded-lg border mt-1 ${shoppingMode && product.in_cart ? 'bg-gray-100 border-gray-200' : 'bg-slate-50 border-slate-100'}`}>
                 <div className="flex flex-col items-center px-2 border-r"><span className="text-[10px] text-slate-400 font-bold uppercase">Qtd</span><span className="font-mono text-lg font-bold text-slate-700">{product.quantidade}</span></div>
@@ -292,9 +287,41 @@ export default function App() {
               <div><label className="block text-sm mb-1 text-slate-600">Nome</label><input required name="nome" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} className="w-full p-3 border rounded-lg bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500"/></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm mb-1 text-slate-600">Marca</label><input name="marca" value={formData.marca} onChange={(e) => setFormData({...formData, marca: e.target.value})} className="w-full p-3 border rounded-lg bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500"/></div>
-                <div><label className="block text-sm mb-1 text-slate-600">Categoria</label>
-                  <input list="cat-list" name="categoria" value={formData.categoria} onChange={(e) => setFormData({...formData, categoria: e.target.value})} className="w-full p-3 border rounded-lg bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Selecione..."/>
-                  <datalist id="cat-list">{uniqueCategories.map(c => <option key={c} value={c}/>)}</datalist>
+                
+                {/* CATEGORIA: SELECT OU INPUT */}
+                <div>
+                  <label className="block text-sm mb-1 text-slate-600">Categoria</label>
+                  {!isCustomCategory ? (
+                    <select 
+                      name="categoria" 
+                      value={formData.categoria} 
+                      onChange={(e) => {
+                        if (e.target.value === 'NEW') {
+                          setIsCustomCategory(true);
+                          setFormData({...formData, categoria: ''});
+                        } else {
+                          setFormData({...formData, categoria: e.target.value});
+                        }
+                      }} 
+                      className="w-full p-3 border rounded-lg bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="">Selecione...</option>
+                      {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                      <option value="NEW">+ Nova Categoria...</option>
+                    </select>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input 
+                        autoFocus
+                        name="categoria" 
+                        value={formData.categoria} 
+                        onChange={(e) => setFormData({...formData, categoria: e.target.value})} 
+                        className="w-full p-3 border rounded-lg bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500"
+                        placeholder="Digite a nova..."
+                      />
+                      <button type="button" onClick={() => setIsCustomCategory(false)} className="p-3 bg-gray-200 rounded-lg text-gray-600"><X size={18}/></button>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
