@@ -52,7 +52,7 @@ export function Sidebar() {
       adminOnly: false,
     },
     {
-      label: "Sala de Guerra",
+      label: "Sala de Reuniões",
       icon: Gavel,
       href: "/board/meetings",
       color: "text-amber-500",

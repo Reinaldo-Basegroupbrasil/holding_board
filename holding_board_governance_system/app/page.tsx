@@ -1,55 +1,51 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase-server' // Cliente autenticado (Cookies)
 import { Activity } from 'lucide-react'
 import { Badge } from "@/components/ui/badge"
 import { DashboardClient } from "@/components/dashboard/dashboard-client"
 
+// Garante que a página seja renderizada no servidor a cada request (sem cache velho)
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
 export default async function DashboardPage() {
+  // Inicializa o cliente com as credenciais do usuário logado (Admin)
+  const supabase = await createClient()
+  
   const currentYear = new Date().getFullYear()
 
-  // 1. BUSCA PARCEIROS
+  // 1. BUSCA DADOS BRUTOS (Respeitando RLS)
   const { data: providers } = await supabase
     .from('providers')
     .select('id, name, capacity_slots, type')
     .order('type', { ascending: false })
 
-  // 2. BUSCA PROJETOS E FASES (Tudo junto)
   const { data: allProjects } = await supabase
     .from('projects')
     .select('id, name, provider_id, investment_realized, monthly_cost, status, custom_timeline, parent_project_id, companies(name)')
     
-  // 3. BUSCA TAREFAS
   const { data: allTasks } = await supabase
     .from('tasks')
     .select('id, title, provider_id, status')
 
   // --- FILTRAGEM INTELIGENTE ---
 
-  // A. Projetos Raiz (Pais) -> Para Financeiro e Contagem de "Projetos Ativos"
+  // A. Projetos Raiz (Pais) -> Apenas para KPIs Financeiros
   const rootProjects = allProjects?.filter(p => 
     p.parent_project_id === null &&
-    !['COMPLETED', 'ARCHIVED', 'concluido', 'cancelado'].includes(p.status)
+    !['completed', 'archived', 'concluido', 'cancelado'].includes(String(p.status).toLowerCase())
   ) || []
 
   // B. Marcos/Fases (Filhos) -> Para o Radar de Entregas
-  // Consideramos marcos apenas itens QUE TÊM PAI (parent_project_id não nulo)
   const milestones = allProjects?.filter(p => 
-    p.parent_project_id !== null && // Só filhos
-    p.custom_timeline && // Tem data
-    !['COMPLETED', 'ARCHIVED'].includes(p.status)
+    p.parent_project_id !== null && 
+    p.custom_timeline && 
+    !['completed', 'archived', 'concluido'].includes(String(p.status).toLowerCase())
   ) || []
 
-  // C. Tarefas Ativas -> Para Carga de Trabalho
+  // C. Tarefas Ativas -> Para somar à carga de trabalho
   const activeTasks = allTasks?.filter(t => 
-    !['concluido', 'concluida', 'done'].includes(t.status) &&
-    t.provider_id !== null
+    t.provider_id !== null && 
+    (t.status === null || !['concluido', 'concluida', 'done'].includes(String(t.status).toLowerCase()))
   ) || []
 
   // --- CÁLCULOS KPIS ---
@@ -59,27 +55,45 @@ export default async function DashboardPage() {
   const activeProjectsCount = rootProjects.length
   const activeTasksCount = activeTasks.length
 
-  // --- MAPA DE CARGA ---
-  // Soma Projetos Raiz + Marcos Isolados + Tarefas
+  // --- MAPA DE CARGA (SOMA HÍBRIDA: PROJETOS + TAREFAS) ---
   const providerStats = providers?.map(provider => {
-    // Conta tudo que está vinculado a este provedor (Pai ou Filho)
+    // 1. Filtra Fases de Projetos vinculadas a este fornecedor
+    // (Usa String() para garantir que UUIDs batam mesmo se o formato diferir ligeiramente)
     const myProjects = allProjects?.filter(p => 
-        p.provider_id === provider.id && 
-        !['COMPLETED', 'ARCHIVED'].includes(p.status)
+        String(p.provider_id) === String(provider.id) && 
+        !['completed', 'archived', 'concluido', 'cancelado'].includes(String(p.status).toLowerCase())
     ) || []
     
-    const myTasks = activeTasks.filter(t => t.provider_id === provider.id)
-    const occupied = myProjects.length + myTasks.length
+    // 2. Filtra Tarefas Avulsas/Reuniões vinculadas a este fornecedor
+    const myTasks = activeTasks.filter(t => String(t.provider_id) === String(provider.id)) 
     
-    const isExternal = provider.type && provider.type.includes('EXTERNAL')
+    // 3. SOMA REAL: Garante que visualizemos TUDO o que ocupa o parceiro
+    const occupied = myProjects.length + myTasks.length 
+    
     const totalSlots = provider.capacity_slots || 0
-    const free = isExternal ? 999 : Math.max(0, totalSlots - occupied)
-    const isOverloaded = !isExternal && occupied > totalSlots
+    const isExternal = provider.type && provider.type.includes('EXTERNAL')
     
-    return { ...provider, occupied, free, isOverloaded, allocations: myProjects, taskCount: myTasks.length, isExternal }
+    // LÓGICA DE SOBRECARGA E DISPONIBILIDADE
+    const isOverloaded = !isExternal && occupied > totalSlots
+    const free = isExternal ? 999 : Math.max(0, totalSlots - occupied)
+
+    // Unifica nomes para os badges no Mapa de Carga
+    const activeAllocations = [
+      ...myProjects.map(p => p.name),
+      ...myTasks.map(t => t.title)
+    ]
+    
+    return { 
+      ...provider, 
+      occupied, 
+      free, 
+      isOverloaded, 
+      activeAllocations, 
+      isExternal 
+    }
   }) || []
 
-  // --- RADAR ANUAL (Baseado apenas em MARCOS/FASES) ---
+  // --- LÓGICA DO RADAR ANUAL ---
   const getQuarter = (month: string) => {
     if (!month) return 'Q4';
     const cleanMonth = month.split(/[\s-]/)[0].trim(); 
@@ -90,7 +104,7 @@ export default async function DashboardPage() {
   const quarterStats = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
   const nextDeliveries: any[] = []
 
-  milestones.forEach(p => { // Loop apenas nos marcos filhos
+  milestones.forEach(p => { 
     if (p.custom_timeline) {
         const q = getQuarter(p.custom_timeline) as keyof typeof quarterStats
         quarterStats[q]++
@@ -100,25 +114,19 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-8 space-y-8 bg-slate-50 min-h-screen text-slate-900">
-      
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-800 tracking-tighter">
             <Activity className="w-8 h-8 text-rose-600" />
             Visão Executiva (Cockpit)
           </h1>
-          <p className="text-slate-500 mt-1 text-sm font-medium">
-            Consolidado financeiro e saúde operacional das Squads.
-          </p>
+          <p className="text-slate-500 mt-1 text-sm font-medium">Consolidado financeiro e saúde operacional das Squads.</p>
         </div>
-        
         <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs py-1 px-3 bg-white border-slate-200 text-slate-500">
-                Exercício {currentYear}
-            </Badge>
+            <Badge variant="outline" className="text-xs py-1 px-3 bg-white border-slate-200 text-slate-500">Exercício {currentYear}</Badge>
             <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Sistema Operante</span>
+                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Monitoramento Ativo</span>
             </div>
         </div>
       </div>

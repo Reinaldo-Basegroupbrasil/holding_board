@@ -324,7 +324,7 @@ export default function WarRoom() {
             <LayoutDashboard className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Sala de Guerra</h1>
+            <h1 className="text-xl font-bold text-slate-800">Sala de Reuniões</h1>
             <p className="text-xs text-slate-500 uppercase font-semibold">
               {viewMode === 'list' ? "Histórico de Atas" : currentMeeting?.title}
             </p>

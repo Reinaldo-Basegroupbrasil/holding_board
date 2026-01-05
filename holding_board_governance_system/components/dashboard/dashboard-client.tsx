@@ -4,9 +4,8 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
 import { 
-  Users, AlertTriangle, Infinity, CalendarDays, Layers, 
+  Users, Infinity, CalendarDays, Layers, 
   Wallet, TrendingUp, BarChart3, Activity, ArrowUpRight 
 } from 'lucide-react'
 
@@ -17,17 +16,15 @@ export function DashboardClient({
   kpis,
   currentYear 
 }: any) {
-  // Estado para o filtro de trimestre
   const [selectedQuarter, setSelectedQuarter] = useState<string | null>(null)
 
-  // Filtra as entregas baseada no clique do Radar
   const filteredDeliveries = selectedQuarter 
     ? nextDeliveries.filter((f: any) => f.quarter === selectedQuarter)
     : nextDeliveries
 
   return (
     <div className="space-y-8">
-      {/* LINHA 1: CARDS DE KPI (Mantendo seu layout original) */}
+      {/* LINHA 1: CARDS DE KPI */}
       <div className="grid gap-6 md:grid-cols-3">
         <Card className="border-none shadow-sm bg-white relative overflow-hidden group hover:shadow-md transition-all">
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Wallet className="w-24 h-24" /></div>
@@ -72,7 +69,7 @@ export function DashboardClient({
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* COLUNA 1: MAPA DE CARGA */}
+        {/* MAPA DE CARGA */}
         <Card className="col-span-2 border-none shadow-sm bg-white">
             <CardHeader className="border-b border-slate-50 pb-4">
                 <div className="flex justify-between items-center">
@@ -80,7 +77,7 @@ export function DashboardClient({
                         <CardTitle className="flex items-center gap-2 text-lg text-slate-800">
                             <Users className="w-5 h-5 text-indigo-600" /> Mapa de Carga e Parceiros
                         </CardTitle>
-                        <CardDescription className="text-xs">Monitoramento de ocupação interna e volume de externos.</CardDescription>
+                        <CardDescription className="text-xs">Ocupação híbrida: Projetos Estratégicos e Demandas Operacionais.</CardDescription>
                     </div>
                 </div>
             </CardHeader>
@@ -103,39 +100,37 @@ export function DashboardClient({
                                         {provider.isExternal ? 'Externo / Consultoria' : 'Engine Interna'}
                                     </span>
                                 </div>
-                                {provider.isOverloaded && (
-                                    <div className="flex items-center gap-1 text-[9px] text-red-500 mt-1 font-bold animate-pulse">
-                                        <AlertTriangle className="w-3 h-3" /> SOBRECARGA
-                                    </div>
-                                )}
                             </TableCell>
                             <TableCell>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex flex-col gap-1.5">
+                                    {/* Exibe o somatório 1+2=3 calculado no servidor */}
                                     <span className="text-xs font-bold text-slate-900">
                                         {provider.occupied} {provider.isExternal ? 'Demandas' : 'Slots Ocupados'}
                                     </span>
-                                    <div className="flex gap-1">
-                                        {provider.allocations.slice(0, 3).map((a: any, i: number) => (
-                                            <Badge key={i} variant="outline" className="text-[8px] px-1 h-4 border-slate-200 text-slate-500 max-w-[80px] truncate">
-                                                {a.name}
+                                    <div className="flex flex-wrap gap-1">
+                                        {/* Lista os nomes unificados de fases e tarefas */}
+                                        {provider.activeAllocations?.map((name: string, i: number) => (
+                                            <Badge key={i} variant="outline" className="text-[8px] px-1 h-4 border-slate-200 text-slate-500 max-w-[150px] truncate">
+                                                {name}
                                             </Badge>
                                         ))}
                                     </div>
                                 </div>
                             </TableCell>
                             <TableCell>
-                                {provider.isExternal ? (
-                                    <Badge className="bg-blue-50 text-blue-700 border-blue-100 text-[10px]">SOB DEMANDA</Badge>
+                                {provider.isOverloaded ? (
+                                    <Badge className="bg-red-50 text-red-700 border-red-100 text-[10px] font-bold animate-pulse tracking-tight">SOBRECARREGADO</Badge>
                                 ) : (
-                                    <Badge className={provider.free > 0 ? "bg-emerald-50 text-emerald-700 text-[10px]" : "bg-red-50 text-red-700 text-[10px]"}>
-                                        {provider.free > 0 ? 'OPERANTE' : 'LOTADO'}
+                                    <Badge className={provider.isExternal ? "bg-blue-50 text-blue-700 border-blue-100 text-[10px]" : "bg-emerald-50 text-emerald-700 border-emerald-100 text-[10px]"}>
+                                        {provider.isExternal ? 'SOB DEMANDA' : 'OPERANTE'}
                                     </Badge>
                                 )}
                             </TableCell>
                             <TableCell className="text-right pr-6">
                                 {provider.isExternal ? <Infinity className="w-5 h-5 text-slate-400 ml-auto" /> : (
                                     <div className="flex justify-end items-center gap-1">
-                                        <span className={`text-xl font-black ${provider.free > 0 ? 'text-indigo-600' : 'text-slate-300'}`}>{provider.free}</span>
+                                        {/* Muda para vermelho se free for 0 ou negativo */}
+                                        <span className={`text-xl font-black ${provider.free > 0 ? 'text-indigo-600' : 'text-red-500'}`}>{provider.free}</span>
                                         <span className="text-[9px] text-slate-400 uppercase font-bold mt-1">Slots</span>
                                     </div>
                                 )}
@@ -146,14 +141,14 @@ export function DashboardClient({
             </Table>
         </Card>
 
-        {/* RADAR ANUAL CLICÁVEL (O que você pediu) */}
+        {/* RADAR ANUAL */}
         <Card className="border-none shadow-sm bg-slate-900 text-white flex flex-col">
             <CardHeader className="pb-2">
                 <CardTitle className="text-lg text-white flex items-center gap-2">
                     <CalendarDays className="w-5 h-5 text-rose-500" /> Radar Anual
                 </CardTitle>
                 <CardDescription className="text-slate-400 text-xs italic">
-                    {selectedQuarter ? `Filtrando: ${selectedQuarter}` : "Clique em um Quarter para filtrar marcos."}
+                    {selectedQuarter ? `Exibindo entregas de ${selectedQuarter}` : "Clique em um trimestre para filtrar."}
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col justify-between pt-4">
@@ -170,7 +165,7 @@ export function DashboardClient({
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shadow-inner ${
-                                    selectedQuarter === q || (q === 'Q1' && !selectedQuarter) ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-500'
+                                    selectedQuarter === q || (!selectedQuarter && (count as number) > 0) ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-500'
                                 }`}>
                                     {q}
                                 </div>
@@ -189,11 +184,10 @@ export function DashboardClient({
                     ))}
                 </div>
                 
-                {/* PRÓXIMOS MARCOS DINÂMICOS */}
                 <div className="mt-6 pt-6 border-t border-white/10">
                     <div className="flex justify-between items-center mb-2">
                         <p className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                            <Layers className="w-3 h-3" /> {selectedQuarter ? `Marcos ${selectedQuarter}` : "Próximos Marcos"}
+                            <Layers className="w-3 h-3" /> {selectedQuarter ? `Fases ${selectedQuarter}` : "Próximas Entregas"}
                         </p>
                         {selectedQuarter && (
                              <button onClick={() => setSelectedQuarter(null)} className="text-[9px] text-rose-400 hover:underline">Limpar</button>
@@ -206,7 +200,7 @@ export function DashboardClient({
                                 <span className="text-rose-400 font-mono text-[10px] font-bold bg-rose-500/10 px-1.5 py-0.5 rounded">{f.custom_timeline}</span>
                             </div>
                         )) : (
-                            <span className="text-xs text-slate-600 italic">Sem entregas planejadas para este período.</span>
+                            <span className="text-xs text-slate-600 italic">Nenhum marco para este período.</span>
                         )}
                     </div>
                 </div>

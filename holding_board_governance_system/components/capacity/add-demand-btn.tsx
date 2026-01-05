@@ -11,12 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PlusCircle, Link2, Briefcase, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-// Importação das Server Actions persistentes
 import { createTaskAction, linkRoadmapAction } from "@/app/actions/demand-actions"
 
-/**
- * Interface atualizada para resolver o erro 'Property onSuccess does not exist'
- */
 interface AddDemandBtnProps {
   providerId: string;
   providerName: string;
@@ -65,7 +61,7 @@ export function AddDemandBtn({
         setOpen(false)
         router.refresh()
       } else {
-        toast.error("Erro ao vincular")
+        toast.error(`Erro ao vincular: ${result.error}`)
       }
     })
   }
@@ -74,14 +70,20 @@ export function AddDemandBtn({
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     
-    const companyId = formData.get('company_id') as string
-    const companyObj = companies.find(c => c.id === companyId)
-
+    // CORREÇÃO CRÍTICA:
+    // O ID que vem do Select é de uma EMPRESA (table companies).
+    // Não podemos salvar esse ID no campo 'project_id' (table projects), pois vai dar erro de chave estrangeira.
+    // Para tarefas avulsas, o project_id DEVE ser null.
+    
     const payload = {
         title: formData.get('name') as string, 
         description: formData.get('milestone') as string, 
-        project_id: companyId === "avulsa" ? null : companyId,
-        company_name: companyObj ? companyObj.name : "Demanda Avulsa",
+        
+        // FORÇA NULL: Isso evita o erro "violates foreign key constraint tasks_project_id_fkey"
+        project_id: null, 
+        
+        // Se quisermos salvar o nome da empresa, usamos company_name (se a tabela tiver essa coluna)
+        // ou ignoramos por enquanto para garantir que o cadastro funcione.
         provider_id: providerId,
         due_date: `${formData.get('month')} - ${formData.get('week') || 'W1'}`,
     }
@@ -91,16 +93,12 @@ export function AddDemandBtn({
       
       if (result.success) { 
         toast.success("Demanda criada!")
-        
-        // Ativa a atualização instantânea na tela
-        if (onSuccess) {
-          onSuccess(payload)
-        }
-        
-        setOpen(false) // Fecha o modal após o sucesso
+        if (onSuccess) onSuccess(payload)
+        setOpen(false) 
         router.refresh() 
       } else {
-        toast.error("Erro ao salvar no banco")
+        console.error("Erro retornado:", result.error)
+        toast.error(`Falha no cadastro: ${result.error}`)
       }
     })
   }
@@ -135,18 +133,9 @@ export function AddDemandBtn({
                 <Input name="name" required placeholder="Ex: Campanha de Performance" className="h-10 border-slate-200" />
               </div>
 
+              {/* Removido o Select de Empresa para evitar confusão no banco de dados por enquanto, 
+                  já que tarefas avulsas não têm vínculo direto com a tabela projects */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-1.5">
-                    <Label className="text-[10px] font-bold uppercase text-slate-400">Empresa / BU</Label>
-                    <Select name="company_id" required>
-                        <SelectTrigger className="h-10 text-xs bg-white border-slate-200"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                        <SelectContent className="bg-white">
-                            <SelectItem value="avulsa">-- Nenhuma --</SelectItem>
-                            {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-                
                 <div className="grid gap-1.5">
                     <Label className="text-[10px] font-bold uppercase text-slate-400">Mês de Entrega</Label>
                     <Select name="month" required>
@@ -154,10 +143,7 @@ export function AddDemandBtn({
                         <SelectContent className="bg-white">{meses.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-1.5">
+                 <div className="grid gap-1.5">
                       <Label className="text-[10px] font-bold uppercase text-slate-400">Semana (Slot)</Label>
                       <Select name="week" defaultValue="W1">
                           <SelectTrigger className="h-10 text-xs bg-white border-slate-200"><SelectValue /></SelectTrigger>
@@ -169,10 +155,11 @@ export function AddDemandBtn({
                           </SelectContent>
                       </Select>
                   </div>
-                  <div className="grid gap-1.5">
-                    <Label className="text-[10px] font-bold uppercase text-slate-400">Entregável</Label>
-                    <Input name="milestone" required placeholder="Ex: Relatório / PDF" className="h-10 border-slate-200" />
-                  </div>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label className="text-[10px] font-bold uppercase text-slate-400">Entregável / Descrição</Label>
+                <Input name="milestone" required placeholder="Ex: Relatório / PDF" className="h-10 border-slate-200" />
               </div>
 
               <DialogFooter>
