@@ -7,11 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Trash2 } from "lucide-react"
 import { AddCompanyModal } from "./add-company-modal"
 
-// 1. Adicionamos 'onUpdate' na interface
 interface CompanyActionsProps {
     company: any;
     allCompanies: any[];
-    onUpdate?: () => void; // Função gatilho
+    onUpdate?: () => void; 
 }
 
 export function CompanyActions({ company, allCompanies, onUpdate }: CompanyActionsProps) {
@@ -32,7 +31,6 @@ export function CompanyActions({ company, allCompanies, onUpdate }: CompanyActio
     if (error) {
         alert("Erro ao excluir: " + error.message)
     } else {
-        // 2. SE DEU CERTO, AVISA O PAI PARA RECARREGAR A TELA
         if (onUpdate) {
             onUpdate()
         } else {
@@ -43,9 +41,15 @@ export function CompanyActions({ company, allCompanies, onUpdate }: CompanyActio
 
   return (
     <div className="flex items-center justify-end gap-1">
-      {/* Passamos o onUpdate também para o modal de editar (opcional, mas bom pra garantir) */}
-      {/* Nota: O AddCompanyModal precisaria ser ajustado para aceitar onUpdate também se quisermos atualização instantânea na edição do nome da empresa, mas focaremos no Delete agora */}
-      <AddCompanyModal companyToEdit={company} existingCompanies={allCompanies || []} />
+      {/* AGORA REPASSAMOS O onUpdate: 
+          Isso garante que ao salvar a edição no modal, 
+          a lista principal recarregue o novo Representante Legal na hora.
+      */}
+      <AddCompanyModal 
+        companyToEdit={company} 
+        existingCompanies={allCompanies || []} 
+        onUpdate={onUpdate} 
+      />
       
       <Button 
         variant="ghost" 

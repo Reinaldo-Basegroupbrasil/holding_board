@@ -10,19 +10,19 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { ShieldCheck, Plus, Trash2, FileText, UploadCloud, Loader2, ExternalLink, AlertCircle, Pencil, X, Check, Ban, Download } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs" // ADICIONADO
+import { ShieldCheck, Plus, Trash2, FileText, UploadCloud, Loader2, ExternalLink, AlertCircle, Pencil, X, Check, Ban, Download, Briefcase, Landmark, ShieldAlert, Gavel, Hammer } from "lucide-react"
 import JSZip from "jszip"
 import { saveAs } from "file-saver"
-import { useAdmin } from "@/hooks/use-admin" // Importando segurança
+import { useAdmin } from "@/hooks/use-admin"
 
-// 1. ADICIONAMOS A PROP PARA COMUNICAR COM O PAI
 interface RegulatoryModalProps {
     company: any;
     onDataChange?: () => void;
 }
 
 export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps) {
-  const { isAdmin } = useAdmin() // Hook de admin
+  const { isAdmin } = useAdmin()
 
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -32,7 +32,6 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
   
   const router = useRouter()
   
-  // Estado do formulário
   const [docName, setDocName] = useState("")
   const [docCategory, setDocCategory] = useState("LEGAL")
   const [docDate, setDocDate] = useState("")
@@ -77,7 +76,6 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
     setSelectedFile(null) 
   }
 
-  // --- FUNÇÃO DE DOWNLOAD ZIP (Data Room) ---
   const handleDownloadZip = async () => {
     const validDocs = docs.filter(d => d.file_url && d.status !== 'MISSING')
     
@@ -122,7 +120,6 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
     }
   }
 
-  // --- SALVAR COM AUDITORIA ---
   const handleSave = async () => {
     if (!docName) {
         alert("Por favor, digite o nome do documento.")
@@ -179,7 +176,6 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
     if (error) {
         alert("Erro ao salvar: " + error.message)
     } else {
-        // --- 🔍 GRAVAR LOG DE AUDITORIA ---
         await supabase.from('audit_logs').insert({
             action: editingId ? 'EDITAR' : 'CRIAR',
             category: 'DOCUMENTO',
@@ -189,34 +185,23 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
 
         resetForm()
         fetchDocs()
-        
-        // 2. AVISA O PAI PARA ATUALIZAR A BOLINHA
         if (onDataChange) onDataChange()
-        
         router.refresh()
     }
     setLoading(false)
   }
 
-  // --- EXCLUIR COM AUDITORIA ---
   const handleDelete = async (doc: any) => {
     if(!confirm(`Excluir o documento "${doc.name}"?`)) return
-    
     await supabase.from('regulatory_docs').delete().eq('id', doc.id)
-
-    // --- 🔍 GRAVAR LOG DE AUDITORIA ---
     await supabase.from('audit_logs').insert({
         action: 'EXCLUIR',
         category: 'DOCUMENTO',
         details: `Excluiu o documento "${doc.name}" de ${company.name}`,
         user_email: 'Admin'
     })
-    
     fetchDocs()
-    
-    // 3. AVISA O PAI PARA ATUALIZAR A BOLINHA
     if (onDataChange) onDataChange()
-
     router.refresh()
   }
 
@@ -236,6 +221,72 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
     
     return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100 text-[10px] w-full justify-center">VIGENTE</Badge>
   }
+
+  // FUNÇÃO AUXILIAR PARA RENDERIZAR A TABELA SEM DUPLICAR CÓDIGO
+  const renderDocumentTable = (filteredDocs: any[]) => (
+    <Table>
+        <TableHeader className="bg-slate-50">
+            <TableRow>
+                <TableHead className="text-xs font-bold text-slate-600 w-[250px]">Documento</TableHead>
+                <TableHead className="text-xs font-bold text-slate-600">Categoria</TableHead>
+                <TableHead className="text-xs font-bold text-slate-600 text-center">Status / Validade</TableHead>
+                <TableHead className="text-xs font-bold text-slate-600 text-center">Arquivo</TableHead>
+                <TableHead className="w-[80px] text-right pr-4">Ações</TableHead>
+            </TableRow>
+        </TableHeader>
+        <TableBody>
+            {filteredDocs.map((doc) => (
+                <TableRow key={doc.id} className={doc.status === 'MISSING' ? 'bg-red-50/40 hover:bg-red-50/60' : 'hover:bg-slate-50'}>
+                    <TableCell className="font-medium text-xs flex items-center gap-2">
+                        {doc.status === 'MISSING' ? <AlertCircle className="w-4 h-4 text-red-500" /> : <FileText className="w-4 h-4 text-slate-400" />}
+                        <span className={doc.status === 'MISSING' ? 'text-red-700 font-bold' : 'text-slate-700'}>{doc.name}</span>
+                    </TableCell>
+                    <TableCell className="text-[10px] text-slate-500 font-bold uppercase">{doc.category}</TableCell>
+                    <TableCell className="text-center">
+                        {getStatusBadge(doc)}
+                        {doc.expiration_date && (
+                            <div className="text-[9px] text-slate-400 mt-0.5 font-mono">
+                                Vence: {new Date(doc.expiration_date).toLocaleDateString('pt-BR')}
+                            </div>
+                        )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                        {doc.file_url ? (
+                            <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
+                                <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+                                    <ExternalLink className="w-3 h-3" /> Ver
+                                </Button>
+                            </a>
+                        ) : (
+                            <span className="text-[10px] text-slate-400 opacity-50">-</span>
+                        )}
+                    </TableCell>
+                    <TableCell className="text-right pr-2">
+                        {isAdmin ? (
+                            <div className="flex justify-end gap-1">
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-500" onClick={() => handleEdit(doc)} title="Editar">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500" onClick={() => handleDelete(doc)} title="Apagar">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                            </div>
+                        ) : (
+                            <span className="text-[10px] text-slate-300 italic">Leitura</span>
+                        )}
+                    </TableCell>
+                </TableRow>
+            ))}
+            {filteredDocs.length === 0 && (
+                <TableRow>
+                    <TableCell colSpan={5} className="text-center py-10 text-slate-400 text-xs italic">
+                        Nenhum documento nesta categoria.
+                    </TableCell>
+                </TableRow>
+            )}
+        </TableBody>
+    </Table>
+  )
 
   return (
     <Dialog open={open} onOpenChange={(val) => { if(!val) resetForm(); setOpen(val); }}>
@@ -273,7 +324,6 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
 
         <div className="py-4 space-y-6">
           
-          {/* SÓ MOSTRA O FORMULÁRIO SE FOR ADMIN */}
           {isAdmin && (
               <div className={`p-5 rounded-xl border transition-all ${editingId ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="flex justify-between mb-4">
@@ -318,10 +368,12 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
                         <Select value={docCategory} onValueChange={setDocCategory}>
                             <SelectTrigger className="h-9 text-xs bg-white"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="LEGAL">Societário / Legal</SelectItem>
-                                <SelectItem value="TAX">Fiscal / Tributário</SelectItem>
-                                <SelectItem value="LABOR">Trabalhista</SelectItem>
-                                <SelectItem value="TECH">Técnico / Operacional</SelectItem>
+                                <SelectItem value="ESTRATÉGICO">💎 Institucional / Estratégico</SelectItem>
+                                <SelectItem value="TAX">📊 Contábil / Fiscal</SelectItem>
+                                <SelectItem value="COMPLIANCE">🛡️ Políticas / Compliance</SelectItem>
+                                <SelectItem value="LEGAL">⚖️ Societário / Legal</SelectItem>
+                                <SelectItem value="LABOR">👷 Trabalhista / Operacional</SelectItem>
+                                <SelectItem value="TECH">⚙️ Técnico / Operacional</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -362,78 +414,29 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
               </div>
           )}
 
-          <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
-            <Table>
-                <TableHeader className="bg-slate-50">
-                    <TableRow>
-                        <TableHead className="text-xs font-bold text-slate-600 w-[250px]">Documento</TableHead>
-                        <TableHead className="text-xs font-bold text-slate-600">Categoria</TableHead>
-                        <TableHead className="text-xs font-bold text-slate-600 text-center">Status / Validade</TableHead>
-                        <TableHead className="text-xs font-bold text-slate-600 text-center">Arquivo</TableHead>
-                        <TableHead className="w-[80px] text-right pr-4">Ações</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {docs.map((doc) => (
-                        <TableRow key={doc.id} className={doc.status === 'MISSING' ? 'bg-red-50/40 hover:bg-red-50/60' : 'hover:bg-slate-50'}>
-                            <TableCell className="font-medium text-xs flex items-center gap-2">
-                                {doc.status === 'MISSING' ? <AlertCircle className="w-4 h-4 text-red-500" /> : <FileText className="w-4 h-4 text-slate-400" />}
-                                <span className={doc.status === 'MISSING' ? 'text-red-700 font-bold' : 'text-slate-700'}>{doc.name}</span>
-                            </TableCell>
-                            
-                            <TableCell className="text-xs text-slate-500">{doc.category}</TableCell>
-                            
-                            <TableCell className="text-center">
-                                {getStatusBadge(doc)}
-                                {doc.expiration_date && (
-                                    <div className="text-[9px] text-slate-400 mt-0.5 font-mono">
-                                        Vence: {new Date(doc.expiration_date).toLocaleDateString('pt-BR')}
-                                    </div>
-                                )}
-                            </TableCell>
-                            
-                            <TableCell className="text-center">
-                                {doc.file_url ? (
-                                    <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
-                                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2 gap-1 border-indigo-200 text-indigo-600 hover:bg-indigo-50">
-                                            <ExternalLink className="w-3 h-3" /> Ver
-                                        </Button>
-                                    </a>
-                                ) : (
-                                    <span className="text-[10px] text-slate-400 opacity-50">-</span>
-                                )}
-                            </TableCell>
-                            
-                            <TableCell className="text-right pr-2">
-                                {/* Ações só para Admin na tabela interna também */}
-                                {isAdmin ? (
-                                    <div className="flex justify-end gap-1">
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-500" onClick={() => handleEdit(doc)} title="Editar">
-                                            <Pencil className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500" onClick={() => handleDelete(doc)} title="Apagar">
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <span className="text-[10px] text-slate-300 italic">Leitura</span>
-                                )}
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                    {docs.length === 0 && (
-                        <TableRow>
-                            <TableCell colSpan={5} className="text-center py-10 text-slate-400 text-xs">
-                                <div className="flex flex-col items-center gap-2 opacity-50">
-                                    <ShieldCheck className="w-8 h-8 text-slate-300" />
-                                    <span>Nenhum documento cadastrado. Use o painel acima.</span>
-                                </div>
-                            </TableCell>
-                        </TableRow>
-                    )}
-                </TableBody>
-            </Table>
-          </div>
+          {/* NOVO SISTEMA DE ABAS ORGANIZADO */}
+          <Tabs defaultValue="all" className="w-full">
+            <TabsList className="flex flex-wrap w-full h-auto bg-slate-100 p-1 rounded-xl mb-6 gap-1">
+              <TabsTrigger value="all" className="flex-1 text-[10px] font-bold py-2">TODOS</TabsTrigger>
+              <TabsTrigger value="strategic" className="flex-1 text-[10px] font-bold py-2">INSTITUCIONAL</TabsTrigger>
+              <TabsTrigger value="finance" className="flex-1 text-[10px] font-bold py-2">CONTÁBIL</TabsTrigger>
+              <TabsTrigger value="compliance" className="flex-1 text-[10px] font-bold py-2">COMPLIANCE</TabsTrigger>
+              <TabsTrigger value="legal" className="flex-1 text-[10px] font-bold py-2">SOCIETÁRIO</TabsTrigger>
+              <TabsTrigger value="labor" className="flex-1 text-[10px] font-bold py-2">TRABALHISTA</TabsTrigger>
+              <TabsTrigger value="tech" className="flex-1 text-[10px] font-bold py-2">TÉCNICO</TabsTrigger>
+            </TabsList>
+
+            <div className="border rounded-lg overflow-hidden bg-white shadow-sm mt-4">
+              <TabsContent value="all" className="m-0">{renderDocumentTable(docs)}</TabsContent>
+              <TabsContent value="strategic" className="m-0">{renderDocumentTable(docs.filter(d => d.category === 'ESTRATÉGICO'))}</TabsContent>
+              <TabsContent value="finance" className="m-0">{renderDocumentTable(docs.filter(d => d.category === 'TAX'))}</TabsContent>
+              <TabsContent value="compliance" className="m-0">{renderDocumentTable(docs.filter(d => d.category === 'COMPLIANCE'))}</TabsContent>
+              <TabsContent value="legal" className="m-0">{renderDocumentTable(docs.filter(d => d.category === 'LEGAL'))}</TabsContent>
+              <TabsContent value="labor" className="m-0">{renderDocumentTable(docs.filter(d => d.category === 'LABOR'))}</TabsContent>
+              <TabsContent value="tech" className="m-0">{renderDocumentTable(docs.filter(d => d.category === 'TECH'))}</TabsContent>
+            </div>
+          </Tabs>
+
         </div>
       </DialogContent>
     </Dialog>

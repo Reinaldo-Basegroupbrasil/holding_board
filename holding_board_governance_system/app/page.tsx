@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { Activity, BadgeCheck } from 'lucide-react'
+import { Activity } from 'lucide-react'
 import { Badge } from "@/components/ui/badge"
 import { DashboardClient } from "@/components/dashboard/dashboard-client"
 
@@ -14,66 +14,93 @@ const supabase = createClient(
 export default async function DashboardPage() {
   const currentYear = new Date().getFullYear()
 
-  // BUSCA DE DADOS
-  const { data: projects } = await supabase
-    .from('projects')
-    .select('id, name, investment_realized, monthly_cost, status, companies(name)')
-    .is('parent_project_id', null) 
-    .neq('status', 'ARCHIVED') // Mudado para ARCHIVED para manter os COMPLETED no histórico se quiser
-
-  const { data: phases } = await supabase
-    .from('projects')
-    .select('custom_timeline, status, name')
-    .not('parent_project_id', 'is', null)
-    .neq('status', 'COMPLETED')
-
+  // 1. BUSCA PARCEIROS
   const { data: providers } = await supabase
     .from('providers')
     .select('id, name, capacity_slots, type')
     .order('type', { ascending: false })
-    
-  const { data: activeAllocations } = await supabase
+
+  // 2. BUSCA PROJETOS E FASES (Tudo junto)
+  const { data: allProjects } = await supabase
     .from('projects')
-    .select('provider_id, name, custom_timeline')
-    .not('provider_id', 'is', null)
-    .neq('status', 'COMPLETED')
+    .select('id, name, provider_id, investment_realized, monthly_cost, status, custom_timeline, parent_project_id, companies(name)')
+    
+  // 3. BUSCA TAREFAS
+  const { data: allTasks } = await supabase
+    .from('tasks')
+    .select('id, title, provider_id, status')
 
-  // CÁLCULOS
-  const totalCapex = projects?.reduce((acc, p) => acc + (p.investment_realized || 0), 0) || 0
-  const totalMonthly = projects?.reduce((acc, p) => acc + (p.monthly_cost || 0), 0) || 0
-  const activeProjectsCount = projects?.filter(p => p.status !== 'COMPLETED').length || 0
+  // --- FILTRAGEM INTELIGENTE ---
 
+  // A. Projetos Raiz (Pais) -> Para Financeiro e Contagem de "Projetos Ativos"
+  const rootProjects = allProjects?.filter(p => 
+    p.parent_project_id === null &&
+    !['COMPLETED', 'ARCHIVED', 'concluido', 'cancelado'].includes(p.status)
+  ) || []
+
+  // B. Marcos/Fases (Filhos) -> Para o Radar de Entregas
+  // Consideramos marcos apenas itens QUE TÊM PAI (parent_project_id não nulo)
+  const milestones = allProjects?.filter(p => 
+    p.parent_project_id !== null && // Só filhos
+    p.custom_timeline && // Tem data
+    !['COMPLETED', 'ARCHIVED'].includes(p.status)
+  ) || []
+
+  // C. Tarefas Ativas -> Para Carga de Trabalho
+  const activeTasks = allTasks?.filter(t => 
+    !['concluido', 'concluida', 'done'].includes(t.status) &&
+    t.provider_id !== null
+  ) || []
+
+  // --- CÁLCULOS KPIS ---
+  const totalCapex = rootProjects.reduce((acc, p) => acc + (Number(p.investment_realized) || 0), 0)
+  const totalMonthly = rootProjects.reduce((acc, p) => acc + (Number(p.monthly_cost) || 0), 0)
+  
+  const activeProjectsCount = rootProjects.length
+  const activeTasksCount = activeTasks.length
+
+  // --- MAPA DE CARGA ---
+  // Soma Projetos Raiz + Marcos Isolados + Tarefas
   const providerStats = providers?.map(provider => {
-    const allocations = activeAllocations?.filter(a => a.provider_id === provider.id) || []
-    const occupied = allocations.length
-    const isExternal = provider.type === 'EXTERNAL_PARTNER'
-    const free = isExternal ? 999 : Math.max(0, provider.capacity_slots - occupied)
-    const isOverloaded = !isExternal && occupied > provider.capacity_slots
-    return { ...provider, occupied, free, isOverloaded, allocations, isExternal }
+    // Conta tudo que está vinculado a este provedor (Pai ou Filho)
+    const myProjects = allProjects?.filter(p => 
+        p.provider_id === provider.id && 
+        !['COMPLETED', 'ARCHIVED'].includes(p.status)
+    ) || []
+    
+    const myTasks = activeTasks.filter(t => t.provider_id === provider.id)
+    const occupied = myProjects.length + myTasks.length
+    
+    const isExternal = provider.type && provider.type.includes('EXTERNAL')
+    const totalSlots = provider.capacity_slots || 0
+    const free = isExternal ? 999 : Math.max(0, totalSlots - occupied)
+    const isOverloaded = !isExternal && occupied > totalSlots
+    
+    return { ...provider, occupied, free, isOverloaded, allocations: myProjects, taskCount: myTasks.length, isExternal }
   }) || []
 
+  // --- RADAR ANUAL (Baseado apenas em MARCOS/FASES) ---
   const getQuarter = (month: string) => {
     if (!month) return 'Q4';
-    const m = { "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12 }[month] || 0
+    const cleanMonth = month.split(/[\s-]/)[0].trim(); 
+    const m = { "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12 }[cleanMonth] || 0
     if (m <= 3) return "Q1"; if (m <= 6) return "Q2"; if (m <= 9) return "Q3"; return "Q4";
   }
 
   const quarterStats = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
   const nextDeliveries: any[] = []
 
-  phases?.forEach(f => {
-    const month = f.custom_timeline?.split(" ")[0]
-    if (month) {
-        const q = getQuarter(month) as keyof typeof quarterStats
-        if (quarterStats[q] !== undefined) quarterStats[q]++
-        nextDeliveries.push({ ...f, quarter: q })
+  milestones.forEach(p => { // Loop apenas nos marcos filhos
+    if (p.custom_timeline) {
+        const q = getQuarter(p.custom_timeline) as keyof typeof quarterStats
+        quarterStats[q]++
+        nextDeliveries.push({ ...p, quarter: q })
     }
   })
 
   return (
     <div className="p-8 space-y-8 bg-slate-50 min-h-screen text-slate-900">
       
-      {/* HEADER ORIGINAL */}
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-800 tracking-tighter">
@@ -96,13 +123,12 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* COMPONENTE INTERATIVO */}
       <DashboardClient 
         currentYear={currentYear}
         quarterStats={quarterStats}
         providerStats={providerStats}
         nextDeliveries={nextDeliveries}
-        kpis={{ totalCapex, totalMonthly, activeProjectsCount }}
+        kpis={{ totalCapex, totalMonthly, activeProjectsCount, activeTasksCount }}
       />
     </div>
   )

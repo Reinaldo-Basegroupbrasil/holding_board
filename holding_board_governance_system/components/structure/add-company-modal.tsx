@@ -8,19 +8,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Pencil, Loader2, Building2, Link2 } from "lucide-react"
+import { Plus, Pencil, Loader2, Building2, Link2, UserCircle2 } from "lucide-react"
 
 const countries = [
-  "Brazil", "United States", "Cayman Islands", "Bahamas", 
+  "Brazil", "Mexico", "United States", "Cayman Islands", "Bahamas", 
   "Paraguay", "Uruguay", "Colombia", "Spain",
   "Portugal", "United Kingdom", "China", "Estonia", "BVI"
 ]
 
-// AQUI ESTAVA FALTANDO O 'onUpdate'
 interface AddCompanyModalProps {
   companyToEdit?: any;
   existingCompanies?: any[];
-  onUpdate?: () => void; // <--- ADICIONADO
+  onUpdate?: () => void;
 }
 
 export function AddCompanyModal({ companyToEdit, existingCompanies = [], onUpdate }: AddCompanyModalProps) {
@@ -55,6 +54,7 @@ export function AddCompanyModal({ companyToEdit, existingCompanies = [], onUpdat
 
     const payload = {
       name: formData.get('name'),
+      legal_representative: formData.get('legal_representative'), // <--- ADICIONADO
       country: formData.get('country'),
       type: formData.get('type'), 
       service_type: formData.get('service_type'),
@@ -76,8 +76,6 @@ export function AddCompanyModal({ companyToEdit, existingCompanies = [], onUpdat
     setLoading(false)
     if (!error) { 
         setOpen(false); 
-        
-        // AVISA O PAI PARA ATUALIZAR A LISTA
         if (onUpdate) {
             onUpdate();
         } else {
@@ -108,9 +106,18 @@ export function AddCompanyModal({ companyToEdit, existingCompanies = [], onUpdat
         
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           
-          <div className="grid gap-2">
-            <Label className="font-bold text-slate-700">Nome da Empresa / Projeto</Label>
-            <Input name="name" defaultValue={companyToEdit?.name} required placeholder="Ex: Altavista Group" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid gap-2">
+                <Label className="font-bold text-slate-700">Nome da Empresa / Projeto</Label>
+                <Input name="name" defaultValue={companyToEdit?.name} required placeholder="Ex: Altavista Group" />
+            </div>
+            <div className="grid gap-2">
+                <Label className="font-bold text-slate-700 flex items-center gap-1.5">
+                    <UserCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                    Representante Legal
+                </Label>
+                <Input name="legal_representative" defaultValue={companyToEdit?.legal_representative} placeholder="Nome do responsável" />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -129,7 +136,7 @@ export function AddCompanyModal({ companyToEdit, existingCompanies = [], onUpdat
                 <SelectContent>
                   <SelectItem value="ACTIVE">🟢 Ativa / Operando</SelectItem>
                   <SelectItem value="STRUCTURING">🟠 Em Estruturação</SelectItem>
-                  <SelectItem value="IDEA">🔵 Apenas Ideia</SelectItem>
+                  <SelectItem value="IDEA">🔵 Em Validação</SelectItem>
                   <SelectItem value="INACTIVE">🔴 Inativa / Baixada</SelectItem>
                 </SelectContent>
               </Select>

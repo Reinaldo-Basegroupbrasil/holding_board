@@ -2,17 +2,28 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutDashboard, Network, Briefcase, Factory, FlaskConical, Settings, LogOut, Loader2 } from "lucide-react"
+import { 
+  LayoutDashboard, 
+  Network, 
+  Briefcase, 
+  Factory, 
+  FlaskConical, 
+  Settings, 
+  LogOut, 
+  Loader2,
+  Gavel,         // Ícone para Sala de Guerra
+  ClipboardList, // Ícone para Minha Pauta
+  DollarSign     // Ícone para Propostas & Contratos
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { createBrowserClient } from "@supabase/ssr"
-import { useAdmin } from "@/hooks/use-admin" // Importando o Hook de Segurança
+import { useAdmin } from "@/hooks/use-admin" 
 
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   
-  // Consumindo o Hook Global de Segurança
   const { isAdmin, userEmail, loading } = useAdmin() 
 
   const handleLogout = async () => {
@@ -25,49 +36,69 @@ export function Sidebar() {
     router.refresh()
   }
 
-  // Definição das rotas e suas permissões
   const routes = [
     {
       label: "Visão Executiva",
       icon: LayoutDashboard,
       href: "/",
       color: "text-sky-500",
-      adminOnly: false, // Visitante vê
+      adminOnly: false,
     },
     {
       label: "Mapa Corporativo",
       icon: Network,
       href: "/structure",
       color: "text-violet-500",
-      adminOnly: false, // Visitante vê
+      adminOnly: false,
+    },
+    {
+      label: "Sala de Guerra",
+      icon: Gavel,
+      href: "/board/meetings",
+      color: "text-amber-500",
+      adminOnly: false, 
+    },
+    {
+      label: "Minha Pauta",
+      icon: ClipboardList,
+      href: "/board/todo",
+      color: "text-rose-500",
+      adminOnly: false,
+    },
+    {
+      label: "Propostas & Contratos", // NOVA SEÇÃO PARA GESTÃO FINANCEIRA
+      icon: DollarSign,
+      href: "/board/proposals",
+      color: "text-blue-500",
+      adminOnly: false, 
     },
     {
       label: "Portfólio Projetos",
       icon: Briefcase,
       href: "/portfolio",
       color: "text-pink-700",
-      adminOnly: false, // Visitante vê
+      adminOnly: false,
     },
     {
       label: "Monitoramento SLA",
       icon: Factory,
       href: "/capacity",
       color: "text-orange-700",
-      adminOnly: false, // Visitante vê
+      adminOnly: false,
     },
     {
-      label: "Inciativas",
+      label: "Iniciativas",
       icon: FlaskConical,
       href: "/forge",
       color: "text-emerald-500",
-      adminOnly: true, // BLOQUEADO: Só Admin vê
+      adminOnly: true, 
     },
     {
       label: "Painel Admin",
       icon: Settings,
       href: "/admin",
       color: "text-gray-400", 
-      adminOnly: true, // BLOQUEADO: Só Admin vê
+      adminOnly: true, 
     },
   ]
 
@@ -88,9 +119,8 @@ export function Sidebar() {
         
         <div className="space-y-1">
           {routes.map((route) => {
-            // Lógica de Bloqueio Visual
-            if (loading && route.adminOnly) return null // Enquanto carrega, esconde restritos
-            if (route.adminOnly && !isAdmin) return null // Se não for admin, esconde restritos
+            if (loading && route.adminOnly) return null 
+            if (route.adminOnly && !isAdmin) return null 
 
             return (
               <Link
@@ -111,7 +141,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* RODAPÉ DO MENU COM PERFIL */}
       <div className="px-3 py-2 border-t border-slate-800">
           {loading ? (
              <div className="px-4 py-2 flex items-center gap-2 text-zinc-500 text-xs">
@@ -124,7 +153,7 @@ export function Sidebar() {
                     {userEmail}
                 </p>
                 <p className={`text-[9px] mt-0.5 font-bold uppercase ${isAdmin ? 'text-emerald-500' : 'text-blue-400'}`}>
-                    {isAdmin ? "Super Admin" : "Visitante (Leitura)"}
+                    {isAdmin ? "Super Admin" : "Executive Board / Member"}
                 </p>
             </div>
           ) : null}
