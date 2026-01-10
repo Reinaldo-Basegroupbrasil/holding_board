@@ -1,51 +1,52 @@
-import { createClient } from '@/lib/supabase-server' // Cliente autenticado (Cookies)
+import { createClient } from '@/lib/supabase-server'
 import { Activity } from 'lucide-react'
 import { Badge } from "@/components/ui/badge"
 import { DashboardClient } from "@/components/dashboard/dashboard-client"
 
-// Garante que a página seja renderizada no servidor a cada request (sem cache velho)
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export default async function DashboardPage() {
-  // Inicializa o cliente com as credenciais do usuário logado (Admin)
   const supabase = await createClient()
   
   const currentYear = new Date().getFullYear()
 
-  // 1. BUSCA DADOS BRUTOS (Respeitando RLS)
+  // 1. BUSCA DADOS BRUTOS
   const { data: providers } = await supabase
     .from('providers')
     .select('id, name, capacity_slots, type')
+    .neq('type', 'HIDDEN')
+    .neq('type', 'EXECUTIVE')
     .order('type', { ascending: false })
 
   const { data: allProjects } = await supabase
     .from('projects')
     .select('id, name, provider_id, investment_realized, monthly_cost, status, custom_timeline, parent_project_id, companies(name)')
     
+  // Agora buscamos board_tasks para somar à carga de trabalho corretamente
   const { data: allTasks } = await supabase
-    .from('tasks')
+    .from('board_tasks')
     .select('id, title, provider_id, status')
 
-  // --- FILTRAGEM INTELIGENTE ---
+  // --- FILTRAGEM ---
 
-  // A. Projetos Raiz (Pais) -> Apenas para KPIs Financeiros
+  // A. Projetos Raiz (Financeiro)
   const rootProjects = allProjects?.filter(p => 
     p.parent_project_id === null &&
     !['completed', 'archived', 'concluido', 'cancelado'].includes(String(p.status).toLowerCase())
   ) || []
 
-  // B. Marcos/Fases (Filhos) -> Para o Radar de Entregas
+  // B. Marcos/Fases (Radar)
   const milestones = allProjects?.filter(p => 
     p.parent_project_id !== null && 
     p.custom_timeline && 
     !['completed', 'archived', 'concluido'].includes(String(p.status).toLowerCase())
   ) || []
 
-  // C. Tarefas Ativas -> Para somar à carga de trabalho
+  // C. Tarefas Ativas (Carga)
   const activeTasks = allTasks?.filter(t => 
     t.provider_id !== null && 
-    (t.status === null || !['concluido', 'concluida', 'done'].includes(String(t.status).toLowerCase()))
+    (t.status === 'pendente' || t.status === 'em_andamento')
   ) || []
 
   // --- CÁLCULOS KPIS ---
@@ -55,33 +56,26 @@ export default async function DashboardPage() {
   const activeProjectsCount = rootProjects.length
   const activeTasksCount = activeTasks.length
 
-  // --- MAPA DE CARGA (SOMA HÍBRIDA: PROJETOS + TAREFAS) ---
+  // --- MAPA DE CARGA ---
   const providerStats = providers?.map(provider => {
-    // 1. Filtra Fases de Projetos vinculadas a este fornecedor
-    // (Usa String() para garantir que UUIDs batam mesmo se o formato diferir ligeiramente)
+    // Projetos do provider
     const myProjects = allProjects?.filter(p => 
         String(p.provider_id) === String(provider.id) && 
         !['completed', 'archived', 'concluido', 'cancelado'].includes(String(p.status).toLowerCase())
     ) || []
     
-    // 2. Filtra Tarefas Avulsas/Reuniões vinculadas a este fornecedor
+    // Tarefas do provider
     const myTasks = activeTasks.filter(t => String(t.provider_id) === String(provider.id)) 
     
-    // 3. SOMA REAL: Garante que visualizemos TUDO o que ocupa o parceiro
     const occupied = myProjects.length + myTasks.length 
     
     const totalSlots = provider.capacity_slots || 0
     const isExternal = provider.type && provider.type.includes('EXTERNAL')
     
-    // LÓGICA DE SOBRECARGA E DISPONIBILIDADE
-    const isOverloaded = !isExternal && occupied > totalSlots
+    const isOverloaded = !isExternal && totalSlots > 0 && occupied >= totalSlots
     const free = isExternal ? 999 : Math.max(0, totalSlots - occupied)
 
-    // Unifica nomes para os badges no Mapa de Carga
-    const activeAllocations = [
-      ...myProjects.map(p => p.name),
-      ...myTasks.map(t => t.title)
-    ]
+    const activeAllocations: any[] = []
     
     return { 
       ...provider, 
@@ -93,7 +87,7 @@ export default async function DashboardPage() {
     }
   }) || []
 
-  // --- LÓGICA DO RADAR ANUAL ---
+  // --- RADAR ANUAL ---
   const getQuarter = (month: string) => {
     if (!month) return 'Q4';
     const cleanMonth = month.split(/[\s-]/)[0].trim(); 
