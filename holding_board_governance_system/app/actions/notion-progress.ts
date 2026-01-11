@@ -4,6 +4,12 @@ import { Client } from "@notionhq/client";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
+export function parseNotionProgress(value: any): number {
+  if (!value) return 0;
+  // Se o Notion mandar 0.8, vira 80. Se mandar 80, continua 80.
+  return value <= 1 && value > 0 ? value * 100 : value;
+}
+
 export async function getPhasesProgress(notionPageIds: string[]) {
   try {
     // Filtramos apenas IDs válidos para não dar erro na API

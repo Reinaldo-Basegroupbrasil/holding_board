@@ -59,7 +59,7 @@ export function Sidebar() {
       adminOnly: false, 
     },
     {
-      label: "Minha Pauta",
+      label: "Demandas & Tarefas",
       icon: ClipboardList,
       href: "/board/todo",
       color: "text-rose-500",
@@ -73,7 +73,7 @@ export function Sidebar() {
       adminOnly: false, 
     },
     {
-      label: "Portfólio Projetos",
+      label: "Portfólio de Projetos",
       icon: Briefcase,
       href: "/portfolio",
       color: "text-pink-700",

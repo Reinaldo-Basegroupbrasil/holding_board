@@ -131,7 +131,7 @@ export default function StructurePage() {
                     <Map className="w-3.5 h-3.5" /> Mapa Global
                 </TabsTrigger>
                 <TabsTrigger value="chart" className="flex items-center gap-2 text-xs font-bold px-4 data-[state=active]:bg-slate-100">
-                    <GitFork className="w-3.5 h-3.5" /> Organograma (Miro)
+                    <GitFork className="w-3.5 h-3.5" /> Organograma
                 </TabsTrigger>
             </TabsList>
             

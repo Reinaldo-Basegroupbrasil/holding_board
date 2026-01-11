@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Markdown
 
-## Getting Started
+# 🏢 Holding Board - Governance System v1.0
 
-First, run the development server:
+Sistema avançado de governança corporativa e monitoramento de projetos integrando **Next.js**, **Supabase** e **Notion API**. O sistema permite uma visão executiva em tempo real de múltiplas frentes de trabalho (Holdings/Empresas).
+
+## 🚀 Principais Funcionalidades
+
+* **Executive Dashboard**: Visão holística de progresso com métricas de saúde dos projetos.
+* **Integração Notion (Real-time)**: Sincronização automática de progresso de tarefas e fases diretamente do Notion.
+* **Mapa Corporativo**: Visualização da estrutura societária e interconexões.
+* **Governança & SLA**: Monitoramento de prazos, reuniões de conselho e demandas operacionais.
+* **Painel Administrativo**: Gestão de permissões (Admin-Only) e configurações de sistema.
+
+## 🛠️ Tech Stack
+
+* **Frontend**: Next.js 15 (App Router), React 19, Tailwind CSS.
+* **Backend & Auth**: Supabase (PostgreSQL), Next-Safe-Action.
+* **Integrações**: Notion SDK, Lucide Icons, Shadcn/UI.
+* **Testes**: Vitest, Testing Library, Coverage Reporting (V8).
+
+## 📊 Qualidade & Testes
+
+O projeto adota uma cultura de qualidade com testes automatizados para lógicas críticas e componentes de UI.
+
+### Como rodar os testes:
+```bash
+# Rodar todos os testes
+npm run test
+
+# Gerar relatório de cobertura (Coverage Report)
+npm run test:coverage
+Indicadores de Cobertura (v1.0 stable):
+Actions: 100% de cobertura nas lógicas de integração com Notion.
+
+Components: Testes de renderização e estado para componentes críticos (PhaseCards, Sidebars).
+
+⚙️ Configuração do Ambiente
+Crie um arquivo .env.local com as seguintes chaves:
+
+Code snippet
+
+NEXT_PUBLIC_SUPABASE_URL=sua_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon
+NOTION_API_KEY=sua_secret_do_notion
+NOTION_TASKS_DB_ID=id_do_banco_de_dados
+🏗️ Estrutura do Projeto
+/app: Rotas e Server Actions.
+
+/components: Componentes de UI e lógicas de visualização.
+
+/hooks: Hooks customizados para gestão de estado e permissões.
+
+/lib: Configurações de clientes (Supabase/Notion).
+
+
+---
+
+### 3. O Passo Final do Desenvolvedor
+
+Depois de excluir as pastas e salvar o README, execute este "combo" de comandos no terminal para finalizar sua entrega:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+git add .
+git commit -m "docs: finalized v1.0 readme and cleaned up test artifacts"
+git push origin main

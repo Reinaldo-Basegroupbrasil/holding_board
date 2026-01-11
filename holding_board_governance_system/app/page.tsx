@@ -114,7 +114,7 @@ export default async function DashboardPage() {
             <Activity className="w-8 h-8 text-rose-600" />
             Visão Executiva (Cockpit)
           </h1>
-          <p className="text-slate-500 mt-1 text-sm font-medium">Consolidado financeiro e saúde operacional das Squads.</p>
+          <p className="text-slate-500 mt-1 text-sm font-medium">Consolidado financeiro e saúde operacional das Equipes.</p>
         </div>
         <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs py-1 px-3 bg-white border-slate-200 text-slate-500">Exercício {currentYear}</Badge>

@@ -22,12 +22,11 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { Plus, Loader2, Trash2, Briefcase, Calendar, Info } from "lucide-react"
+import { Plus, Loader2, Trash2, Briefcase, Calendar, Info, Link } from "lucide-react"
 
 export function AddProjectModal({ companies }: { companies: any[] }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  // Estado inicial com uma fase padrão para o planejamento do roadmap
   const [fases, setFases] = useState([{ name: '', month: 'Janeiro', week: 'W1 (Início)' }])
   
   const router = useRouter()
@@ -55,6 +54,7 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
     
     const formData = new FormData(e.currentTarget)
     const companyId = formData.get('company_id')
+    const notionPageId = formData.get('notion_page_id') // 🚀 Captura o ID do Notion
 
     // 1. Criar o Projeto Estratégico (Macro/Pai)
     const { data: project, error: pError } = await supabase
@@ -62,10 +62,11 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
       .insert({
         name: formData.get('name'),
         company_id: companyId,
-        investment_realized: Number(formData.get('investment')) || 0, // Capex
-        monthly_cost: Number(formData.get('monthly_cost')) || 0,        // Opex Forge
-        status: 'ON_TRACK', // Usando status válido para evitar erro de enum
-        parent_project_id: null // Identificador de Projeto Macro
+        notion_page_id: notionPageId, // 🚀 Salva o ID da Integração
+        investment_realized: Number(formData.get('investment')) || 0,
+        monthly_cost: Number(formData.get('monthly_cost')) || 0,
+        status: 'ON_TRACK',
+        parent_project_id: null 
       })
       .select()
       .single()
@@ -76,14 +77,14 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
       return
     }
 
-    // 2. Criar as Fases (Milestones) vinculadas ao Projeto Macro
+    // 2. Criar as Fases (Milestones) vinculadas
     if (project && fases.length > 0) {
       const fasesData = fases.map(f => ({
         name: f.name || "Marco Planejado",
-        parent_project_id: project.id, // Vínculo hierárquico
+        parent_project_id: project.id,
         company_id: companyId,
-        custom_timeline: `${f.month} ${f.week}`, // Janela W1-W4
-        status: 'ON_TRACK' // Status padrão aceito pelo banco
+        custom_timeline: `${f.month} ${f.week}`,
+        status: 'ON_TRACK'
       }))
 
       const { error: fError } = await supabase.from('projects').insert(fasesData)
@@ -95,7 +96,7 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
 
     setLoading(false)
     setOpen(false)
-    setFases([{ name: '', month: 'Janeiro', week: 'W1 (Início)' }]) // Reset do estado
+    setFases([{ name: '', month: 'Janeiro', week: 'W1 (Início)' }])
     router.refresh()
   }
 
@@ -114,37 +115,54 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
             PLANEJAMENTO ESTRATÉGICO
           </DialogTitle>
           <DialogDescription className="text-slate-500 font-medium italic">
-            Cadastre a iniciativa e desenhe o roadmap de entregas para as Squads assumirem.
+            Cadastre a iniciativa e integre com o Roadmap do Notion.
           </DialogDescription>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-8 py-4">
-          {/* SEÇÃO 1: IDENTIFICAÇÃO E EMPRESA */}
-          <div className="grid grid-cols-2 gap-6">
-            <div className="grid gap-2">
-              <Label className="font-bold text-slate-700 text-sm">Nome do Projeto Macro</Label>
-              <Input 
-                name="name" 
-                placeholder="Ex: Expansão Cartões Luz" 
-                required 
-                className="h-12 border-slate-200 focus:ring-rose-500 transition-all" 
-              />
+          {/* SEÇÃO 1: IDENTIFICAÇÃO E INTEGRAÇÃO */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-6">
+              <div className="grid gap-2">
+                <Label className="font-bold text-slate-700 text-sm">Nome do Projeto Macro</Label>
+                <Input 
+                  name="name" 
+                  placeholder="Ex: Expansão Cartões Luz" 
+                  required 
+                  className="h-12 border-slate-200 focus:ring-rose-500 transition-all" 
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label className="font-bold text-slate-700 text-sm">Empresa Beneficiária</Label>
+                <Select name="company_id" required>
+                  <SelectTrigger className="h-12 border-slate-200">
+                    <SelectValue placeholder="Selecione a Holding..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label className="font-bold text-slate-700 text-sm">Empresa Beneficiária</Label>
-              <Select name="company_id" required>
-                <SelectTrigger className="h-12 border-slate-200">
-                  <SelectValue placeholder="Selecione a Holding..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+
+            {/* 🚀 CAMPO NOTION ID */}
+            <div className="grid gap-2 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+              <Label className="font-bold text-indigo-700 text-xs flex items-center gap-2">
+                <Link className="w-3 h-3" /> ID DA PÁGINA NO NOTION (INTEGRAÇÃO)
+              </Label>
+              <Input 
+                name="notion_page_id" 
+                placeholder="Cole o ID da página do projeto no Notion..." 
+                className="h-11 border-indigo-200 bg-white focus:ring-indigo-500 text-xs font-mono" 
+              />
+              <p className="text-[10px] text-indigo-500 italic">
+                Necessário para que o sistema consiga criar fases e tarefas automaticamente.
+              </p>
             </div>
           </div>
 
-          {/* SEÇÃO 2: FINANCEIRO (CAPEX E OPEX) */}
-          <div className="grid grid-cols-2 gap-6">
+          {/* SEÇÃO 2: FINANCEIRO */}
+          <div className="grid grid-cols-2 gap-6 pt-4">
             <div className="grid gap-2">
               <Label className="font-bold text-slate-700 text-sm">Investimento Total (Capex USD)</Label>
               <div className="relative">
@@ -161,18 +179,18 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
             </div>
           </div>
 
-          {/* SEÇÃO 3: CRONOGRAMA DINÂMICO (ROADMAP) */}
+          {/* SEÇÃO 3: CRONOGRAMA DINÂMICO */}
           <div className="space-y-4 border-t border-slate-100 pt-8">
             <div className="flex justify-between items-center px-1">
               <Label className="font-black text-rose-600 text-[11px] tracking-[0.2em] uppercase flex items-center gap-2">
-                <Calendar className="w-4 h-4" /> Roadmap de Fases e Janelas
+                <Calendar className="w-4 h-4" /> Roadmap Inicial de Fases
               </Label>
               <Button 
                 type="button" 
                 variant="outline" 
                 size="sm" 
                 onClick={addFase} 
-                className="h-8 text-[10px] font-bold border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors"
+                className="h-8 text-[10px] font-bold border-rose-200 text-rose-600 hover:bg-rose-50"
               >
                 + Adicionar Marco
               </Button>
@@ -180,7 +198,7 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
 
             <div className="grid gap-3">
               {fases.map((fase, index) => (
-                <div key={index} className="grid grid-cols-12 gap-2 items-end bg-slate-50/50 p-4 rounded-2xl border border-slate-100 group hover:border-rose-200 transition-all">
+                <div key={index} className="grid grid-cols-12 gap-2 items-end bg-slate-50/50 p-4 rounded-2xl border border-slate-100 group">
                   <div className="col-span-5 grid gap-2">
                     <Label className="text-[10px] font-black text-slate-400 uppercase">Nome da Etapa</Label>
                     <Input 
@@ -209,7 +227,7 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
                     </Select>
                   </div>
                   <div className="col-span-3 grid gap-2">
-                    <Label className="text-[10px] font-black text-slate-400 uppercase">Semana (Slot)</Label>
+                    <Label className="text-[10px] font-black text-slate-400 uppercase">Semana</Label>
                     <Select value={fase.week} onValueChange={(val) => {
                       const newFases = [...fases];
                       newFases[index].week = val;
@@ -230,7 +248,7 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
                       variant="ghost" 
                       size="icon" 
                       onClick={() => removeFase(index)} 
-                      className="h-10 w-10 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                      className="h-10 w-10 text-slate-300 hover:text-red-500 rounded-full"
                       disabled={fases.length === 1}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -241,29 +259,13 @@ export function AddProjectModal({ companies }: { companies: any[] }) {
             </div>
           </div>
 
-          <div className="p-4 bg-slate-900 rounded-2xl flex gap-4 items-center">
-             <div className="bg-rose-600 p-2 rounded-lg shadow-inner">
-                <Info className="w-5 h-5 text-white" />
-             </div>
-             <p className="text-[11px] text-slate-300 font-medium leading-relaxed">
-               <strong>Nota Estratégica:</strong> Estas fases aparecerão na aba de <strong>Capacidade</strong> para que as Squads (Atlas/Axia) possam assumir os slots e realizar a execução técnica.
-             </p>
-          </div>
-
           <DialogFooter className="pt-4">
             <Button 
               type="submit" 
               disabled={loading} 
-              className="w-full bg-rose-600 hover:bg-rose-700 text-white h-14 font-black text-sm shadow-xl transition-all active:scale-[0.98]"
+              className="w-full bg-rose-600 hover:bg-rose-700 text-white h-14 font-black text-sm shadow-xl transition-all"
             >
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  CONSOLIDANDO ROADMAP...
-                </div>
-              ) : (
-                "FINALIZAR PLANEJAMENTO E LANÇAR NO PORTFÓLIO"
-              )}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "FINALIZAR E LANÇAR NO PORTFÓLIO"}
             </Button>
           </DialogFooter>
         </form>
