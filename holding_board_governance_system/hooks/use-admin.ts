@@ -13,24 +13,33 @@ export function useAdmin() {
 
   useEffect(() => {
     async function getProfile() {
+      // 1. Pega o usuário logado na sessão atual
       const { data: { user } } = await supabase.auth.getUser()
+      
       if (user) {
         setUserEmail(user.email ?? null)
+        
+        // 2. Busca o cargo (role) na tabela 'profiles' que você criou no Supabase
         const { data } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', user.id)
           .single()
+        
         setRole(data?.role || 'user')
       }
+      
       setLoading(false)
     }
-    getProfile()
-  }, [])
 
+    getProfile()
+  }, [supabase])
+
+  // O 'isManager' retorna true se for Manager OU Admin.
+  // Isso garante que você (Admin) continue tendo acesso a tudo o que o Armando faz.
   return {
     isAdmin: role === 'admin',
-    isManager: role === 'manager' || role === 'admin', // 🚀 Resolve o erro da imagem 33d1fd
+    isManager: role === 'manager' || role === 'admin',
     userEmail,
     loading
   }
