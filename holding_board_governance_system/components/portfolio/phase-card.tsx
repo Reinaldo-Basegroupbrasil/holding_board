@@ -113,6 +113,13 @@ export function PhaseCard({ phase, isLast }: { phase: any, isLast: boolean }) {
                 // Fallback se não vier o nome
                 <Badge variant="secondary" className="mt-1 text-[8px] h-4 px-1 bg-slate-100 text-slate-500">Alocado</Badge>
             ) : null}
+
+            {/* ADICIONADO: Apenas o percentual discreto */}
+            {phase.notion_page_id && (
+                <span className="mt-2 text-[9px] font-black text-slate-400">
+                    {Math.round(phase.progress || 0)}%
+                </span>
+            )}
         </div>
       </DialogTrigger>
       

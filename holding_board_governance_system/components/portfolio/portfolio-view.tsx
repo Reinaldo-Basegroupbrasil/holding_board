@@ -237,7 +237,8 @@ export function PortfolioView({ projects, milestones, companies, providers }: { 
                                     </div>
                                 )}
                                 
-                                {isAdmin && <AddPhaseBtn parentId={project.id} />}
+                                {/* Altere esta linha no seu portifolio-view.tsx */}
+{isAdmin && <AddPhaseBtn parentId={project.id} parentNotionId={project.notion_page_id} />}
                             </div>
 
                             {/* COLUNA 3: FINANCEIRO E AÇÕES */}
