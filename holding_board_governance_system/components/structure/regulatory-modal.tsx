@@ -10,8 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs" // ADICIONADO
-import { ShieldCheck, Plus, Trash2, FileText, UploadCloud, Loader2, ExternalLink, AlertCircle, Pencil, X, Check, Ban, Download, Briefcase, Landmark, ShieldAlert, Gavel, Hammer } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ShieldCheck, Plus, Trash2, FileText, UploadCloud, Loader2, ExternalLink, AlertCircle, Pencil, X, Check, Ban, Download } from "lucide-react"
 import JSZip from "jszip"
 import { saveAs } from "file-saver"
 import { useAdmin } from "@/hooks/use-admin"
@@ -22,7 +22,11 @@ interface RegulatoryModalProps {
 }
 
 export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps) {
-  const { isAdmin } = useAdmin()
+  // 🚀 ATUALIZAÇÃO: Pegamos as novas permissões e o e-mail do usuário logado
+  const { isAdmin, isManager, userEmail } = useAdmin()
+  
+  // Definimos que tanto Admin quanto Manager podem gerenciar documentos
+  const canManage = isAdmin || isManager
 
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -176,11 +180,12 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
     if (error) {
         alert("Erro ao salvar: " + error.message)
     } else {
+        // 🚀 ATUALIZAÇÃO: Agora registra o e-mail real do usuário no log
         await supabase.from('audit_logs').insert({
             action: editingId ? 'EDITAR' : 'CRIAR',
             category: 'DOCUMENTO',
             details: `${editingId ? 'Editou' : 'Cadastrou'} o documento "${docName}" em ${company.name}`,
-            user_email: 'Admin' 
+            user_email: userEmail || 'Sistema' 
         })
 
         resetForm()
@@ -193,16 +198,23 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
 
   const handleDelete = async (doc: any) => {
     if(!confirm(`Excluir o documento "${doc.name}"?`)) return
-    await supabase.from('regulatory_docs').delete().eq('id', doc.id)
-    await supabase.from('audit_logs').insert({
-        action: 'EXCLUIR',
-        category: 'DOCUMENTO',
-        details: `Excluiu o documento "${doc.name}" de ${company.name}`,
-        user_email: 'Admin'
-    })
-    fetchDocs()
-    if (onDataChange) onDataChange()
-    router.refresh()
+    
+    const { error } = await supabase.from('regulatory_docs').delete().eq('id', doc.id)
+    
+    if (error) {
+        alert("Erro ao excluir: " + error.message)
+    } else {
+        // 🚀 ATUALIZAÇÃO: Registra o e-mail real na exclusão
+        await supabase.from('audit_logs').insert({
+            action: 'EXCLUIR',
+            category: 'DOCUMENTO',
+            details: `Excluiu o documento "${doc.name}" de ${company.name}`,
+            user_email: userEmail || 'Sistema'
+        })
+        fetchDocs()
+        if (onDataChange) onDataChange()
+        router.refresh()
+    }
   }
 
   const getStatusBadge = (doc: any) => {
@@ -222,7 +234,6 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
     return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100 text-[10px] w-full justify-center">VIGENTE</Badge>
   }
 
-  // FUNÇÃO AUXILIAR PARA RENDERIZAR A TABELA SEM DUPLICAR CÓDIGO
   const renderDocumentTable = (filteredDocs: any[]) => (
     <Table>
         <TableHeader className="bg-slate-50">
@@ -262,7 +273,8 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
                         )}
                     </TableCell>
                     <TableCell className="text-right pr-2">
-                        {isAdmin ? (
+                        {/* 🚀 ATUALIZAÇÃO: Agora Armando vê os botões de editar e apagar */}
+                        {canManage ? (
                             <div className="flex justify-end gap-1">
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-500" onClick={() => handleEdit(doc)} title="Editar">
                                     <Pencil className="w-3.5 h-3.5" />
@@ -324,7 +336,8 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
 
         <div className="py-4 space-y-6">
           
-          {isAdmin && (
+          {/* 🚀 ATUALIZAÇÃO: Formulário liberado para Managers (Armando) */}
+          {canManage && (
               <div className={`p-5 rounded-xl border transition-all ${editingId ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="flex justify-between mb-4">
                     <Label className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${editingId ? 'text-indigo-700' : 'text-slate-600'}`}>
@@ -414,7 +427,6 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
               </div>
           )}
 
-          {/* NOVO SISTEMA DE ABAS ORGANIZADO */}
           <Tabs defaultValue="all" className="w-full">
             <TabsList className="flex flex-wrap w-full h-auto bg-slate-100 p-1 rounded-xl mb-6 gap-1">
               <TabsTrigger value="all" className="flex-1 text-[10px] font-bold py-2">TODOS</TabsTrigger>

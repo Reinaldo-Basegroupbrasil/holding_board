@@ -4,10 +4,12 @@ import { Client } from "@notionhq/client";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
-export function parseNotionProgress(value: any): number {
+export async function parseNotionProgress(value: any): Promise<number> {
   if (!value) return 0;
-  // Se o Notion mandar 0.8, vira 80. Se mandar 80, continua 80.
-  return value <= 1 && value > 0 ? value * 100 : value;
+  
+  // A lógica permanece a mesma, mas agora retorna uma Promise
+  const progress = value <= 1 && value > 0 ? value * 100 : value;
+  return progress;
 }
 
 export async function getPhasesProgress(notionPageIds: string[]) {

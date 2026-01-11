@@ -1,15 +1,11 @@
-"use client"
-
+// hooks/use-admin.ts
 import { useEffect, useState } from "react"
 import { createBrowserClient } from "@supabase/ssr"
 
 export function useAdmin() {
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null) // 🚀 Adicionado
   const [loading, setLoading] = useState(true)
-  const [userEmail, setUserEmail] = useState<string | null>(null) // Adicionado
-
-  // ⚠️ SEU EMAIL DE SUPER ADMIN
-  const ADMIN_EMAIL = "reinaldo.goncalves@basegroupbrasil.com"
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,34 +13,27 @@ export function useAdmin() {
   )
 
   useEffect(() => {
-    const checkUser = async () => {
+    async function getProfile() {
       const { data: { user } } = await supabase.auth.getUser()
-      
-      if (user && user.email) {
-        setUserEmail(user.email)
-        if (user.email.trim().toLowerCase() === ADMIN_EMAIL.trim().toLowerCase()) {
-          setIsAdmin(true)
-        } else {
-          setIsAdmin(false)
-        }
-      } else {
-        setUserEmail(null)
-        setIsAdmin(false)
+      if (user) {
+        setUserEmail(user.email ?? null)
+        const { data } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        
+        setRole(data?.role || 'user')
       }
       setLoading(false)
     }
+    getProfile()
+  }, [])
 
-    checkUser()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      checkUser()
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [supabase, ADMIN_EMAIL])
-
-  // AGORA RETORNA O USEREMAIL
-  return { isAdmin, loading, userEmail } 
+  return {
+    isAdmin: role === 'admin',
+    isManager: role === 'manager' || role === 'admin', // 🚀 Resolve o erro da imagem 33d1fd
+    userEmail, // 🚀 Necessário para os logs de auditoria
+    loading
+  }
 }
