@@ -38,6 +38,7 @@ interface ProjectState {
   addAssumption: (assumption: Partial<Assumption>) => Promise<void>;
   updateAssumption: (id: string, updates: Partial<Assumption>) => Promise<void>;
   removeAssumption: (id: string) => Promise<void>;
+  importAssumptions: (items: Partial<Assumption>[]) => Promise<number>;
 
   setExchangeRate: (rate: number, currency: string) => void;
 }
@@ -238,6 +239,82 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ assumptions: updatedList, projection: calculateProjection(updatedList) });
       await assumptionService.deleteAssumption(id);
     } catch (error) { console.error("Erro delete:", error); }
+  },
+
+  importAssumptions: async (items) => {
+    const { currentScenario, currentProject } = get();
+    if (!currentScenario || !currentProject) return 0;
+
+    set({ isLoading: true });
+    let imported = 0;
+
+    const idMap: Record<string, string> = {};
+
+    const parentBases = items.filter((i: any) => i.category === 'base' && !i.driver_id);
+    const childBases = items.filter((i: any) => i.category === 'base' && i.driver_id);
+    const rest = items.filter((i: any) => i.category !== 'base');
+
+    try {
+      for (const item of parentBases) {
+        const exportId = (item as any)._exportId;
+        const { _exportId, ...cleanItem } = item as any;
+        const payload = {
+          ...cleanItem,
+          driver_id: null,
+          project_id: currentProject.id,
+          scenario_id: currentScenario.id,
+        } as Omit<Assumption, 'id' | 'created_at'>;
+        const created = await assumptionService.createAssumption(payload);
+        if (created) {
+          imported++;
+          if (exportId) idMap[exportId] = created.id;
+        }
+      }
+
+      for (const item of childBases) {
+        const exportId = (item as any)._exportId;
+        const { _exportId, ...cleanItem } = item as any;
+        let newDriverId = cleanItem.driver_id;
+        if (newDriverId && idMap[newDriverId]) newDriverId = idMap[newDriverId];
+        else if (newDriverId) newDriverId = null;
+        const payload = {
+          ...cleanItem,
+          driver_id: newDriverId,
+          project_id: currentProject.id,
+          scenario_id: currentScenario.id,
+        } as Omit<Assumption, 'id' | 'created_at'>;
+        const created = await assumptionService.createAssumption(payload);
+        if (created) {
+          imported++;
+          if (exportId) idMap[exportId] = created.id;
+        }
+      }
+
+      for (const item of rest) {
+        const { _exportId, ...cleanItem } = item as any;
+        let newDriverId = cleanItem.driver_id;
+        if (newDriverId && idMap[newDriverId]) {
+          newDriverId = idMap[newDriverId];
+        } else if (newDriverId) {
+          newDriverId = null;
+        }
+        const payload = {
+          ...cleanItem,
+          driver_id: newDriverId,
+          project_id: currentProject.id,
+          scenario_id: currentScenario.id,
+        } as Omit<Assumption, 'id' | 'created_at'>;
+        const created = await assumptionService.createAssumption(payload);
+        if (created) imported++;
+      }
+
+      await get().fetchAssumptions(currentScenario.id);
+    } catch (error) {
+      console.error("Erro import:", error);
+    } finally {
+      set({ isLoading: false });
+    }
+    return imported;
   },
 
   setExchangeRate: (rate: number, currency: string) => {

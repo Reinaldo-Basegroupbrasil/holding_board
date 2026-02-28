@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from "react"; 
 import Link from "next/link";
-import { ArrowLeft, Plus, Settings, Download, Loader2, FileText, Globe } from "lucide-react";
+import { ArrowLeft, Plus, Settings, Download, Loader2, FileText, Globe, Upload, Database } from "lucide-react";
 
 import { useProjectStore } from "@/store/projectStore";
 import { Assumption } from "@/types";
@@ -37,6 +37,10 @@ import { ScenarioSelector } from '@/components/dashboard/ScenarioSelector';
 import { generatePDF } from "@/lib/pdfGenerator";
 import { PdfLanguage } from "@/locales/pdfTranslations";
 
+// Import/Export de premissas
+import { buildExportPayload, downloadJSON, parseImportFile } from "@/lib/assumptionIO";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const projectId = resolvedParams.id;
@@ -48,14 +52,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     assumptions, 
     fetchProject, 
     isLoading, 
-    removeAssumption 
+    removeAssumption,
+    importAssumptions 
   } = useProjectStore();
   
   // Estado dos Modais e Loadings
   const [isAssumptionDialogOpen, setIsAssumptionDialogOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingAssumption, setEditingAssumption] = useState<Assumption | undefined>(undefined);
   const [isExporting, setIsExporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (projectId) {
@@ -102,6 +109,24 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   };
 
+  const handleExportAssumptions = () => {
+    if (!currentProject || !currentScenario || assumptions.length === 0) return;
+    const payload = buildExportPayload(assumptions, currentProject.name, currentScenario.name);
+    const safeName = currentProject.name.replace(/[^a-zA-Z0-9]/g, '_');
+    downloadJSON(payload, `premissas_${safeName}_${currentScenario.name}.json`);
+  };
+
+  const handleImportFile = async (file: File) => {
+    setImportStatus(null);
+    try {
+      const payload = await parseImportFile(file);
+      const count = await importAssumptions(payload.assumptions);
+      setImportStatus(`${count} premissa(s) importada(s) com sucesso!`);
+    } catch (err: any) {
+      setImportStatus(`Erro: ${err.message}`);
+    }
+  };
+
   if (isLoading && !currentProject) {
     return (
       <div className="p-8 space-y-4">
@@ -140,12 +165,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           {/* MENU DE EXPORTAÇÃO */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" disabled={isExporting} title="Exportar PDF">
+              <Button variant="outline" size="icon" disabled={isExporting} title="Exportar / Importar">
                  {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Exportar Relatório</DropdownMenuLabel>
+              <DropdownMenuLabel>Relatório PDF</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => handleExport('pt')} className="cursor-pointer">
                 <FileText className="mr-2 h-4 w-4" /> Português (BR)
@@ -155,6 +180,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleExport('es')} className="cursor-pointer">
                 <Globe className="mr-2 h-4 w-4" /> Español (ES)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Premissas (Backup)</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleExportAssumptions} className="cursor-pointer" disabled={assumptions.length === 0}>
+                <Database className="mr-2 h-4 w-4" /> Exportar Premissas (JSON)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIsImportDialogOpen(true)} className="cursor-pointer">
+                <Upload className="mr-2 h-4 w-4" /> Importar Premissas
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -228,6 +262,54 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           project={currentProject} 
         />
       )}
+
+      {/* Modal de Importação */}
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => { setIsImportDialogOpen(open); if (!open) setImportStatus(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-blue-500" />
+              Importar Premissas
+            </DialogTitle>
+            <DialogDescription>
+              Selecione um arquivo JSON exportado anteriormente. As premissas serão adicionadas ao cenário <strong>{currentScenario?.name}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <label
+              className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors border-slate-300 hover:border-blue-400"
+            >
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <Upload className="h-8 w-8 text-slate-400 mb-2" />
+                <p className="text-sm text-slate-500">
+                  <span className="font-semibold text-blue-600">Clique para selecionar</span> o arquivo .json
+                </p>
+              </div>
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImportFile(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+
+            {importStatus && (
+              <p className={`text-sm text-center font-medium ${importStatus.startsWith('Erro') ? 'text-red-600' : 'text-green-600'}`}>
+                {importStatus}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsImportDialogOpen(false); setImportStatus(null); }}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
