@@ -18,7 +18,8 @@ interface ProjectState {
   projection: ProjectionSummary | null;
 
   exchangeRate: number;    
-  targetCurrency: string;  
+  targetCurrency: string;
+  discountRate: number;
 
   // --- AÇÕES ---
   fetchProjects: () => Promise<void>;
@@ -41,6 +42,7 @@ interface ProjectState {
   importAssumptions: (items: Partial<Assumption>[]) => Promise<number>;
 
   setExchangeRate: (rate: number, currency: string) => void;
+  setDiscountRate: (rate: number) => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -53,6 +55,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isLoading: false,
   exchangeRate: 1.0,
   targetCurrency: 'BRL',
+  discountRate: 12,
 
   fetchProjects: async () => {
     set({ isLoading: true });
@@ -319,5 +322,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setExchangeRate: (rate: number, currency: string) => {
     set({ exchangeRate: rate, targetCurrency: currency });
+  },
+
+  setDiscountRate: (rate: number) => {
+    set({ discountRate: rate });
   }
 }));

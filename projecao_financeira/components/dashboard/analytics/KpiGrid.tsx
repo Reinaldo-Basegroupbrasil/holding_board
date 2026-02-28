@@ -2,11 +2,12 @@
 
 import { useProjectStore } from "@/store/projectStore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDownRight, ArrowUpRight, Target, Wallet, PiggyBank, TrendingUp } from "lucide-react";
-import { HelpTooltip } from "@/components/ui/help-tooltip"; // Importamos nosso novo componente
+import { ArrowDownRight, ArrowUpRight, Target, Wallet, PiggyBank, TrendingUp, DollarSign, Percent } from "lucide-react";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { calculateNPV, calculateIRR } from "@/lib/viabilityMetrics";
 
 export function KpiGrid() {
-  const { projection, isLoading, exchangeRate, targetCurrency } = useProjectStore();
+  const { projection, isLoading, exchangeRate, targetCurrency, discountRate } = useProjectStore();
 
   if (isLoading || !projection) {
     return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 h-32 animate-pulse bg-slate-100 rounded-lg" />;
@@ -29,6 +30,11 @@ export function KpiGrid() {
 
   const totalRevenue = totals.revenue.reduce((acc, curr) => acc + curr.value, 0);
 
+  const cashFlows = totals.cash_flow.map(m => m.value);
+  const initialCF = projection.preOperational.cash_flow;
+  const npv = calculateNPV(cashFlows, discountRate, initialCF);
+  const irr = calculateIRR(cashFlows, initialCF);
+
   // --- FORMATADORES ---
   const formatMoney = (val: number) => {
     const converted = val / exchangeRate;
@@ -40,7 +46,7 @@ export function KpiGrid() {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       
       {/* CARD 1: NECESSIDADE DE CAIXA */}
       <Card>
@@ -114,6 +120,44 @@ export function KpiGrid() {
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             Volume total de vendas projetado
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* CARD 5: VPL */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium flex items-center">
+            VPL
+            <HelpTooltip text="Valor Presente Líquido: quanto vale HOJE todo o dinheiro futuro do projeto, descontado pela taxa definida. Se positivo, o projeto gera valor acima da taxa exigida." />
+          </CardTitle>
+          <DollarSign className={`h-4 w-4 ${npv >= 0 ? "text-green-500" : "text-red-500"}`} />
+        </CardHeader>
+        <CardContent>
+          <div className={`text-2xl font-bold ${npv >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {formatMoney(npv)}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Taxa de desconto: {discountRate}% a.a.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* CARD 6: TIR */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium flex items-center">
+            TIR
+            <HelpTooltip text="Taxa Interna de Retorno: o retorno anual real do projeto. Se maior que a taxa de desconto, o projeto é viável." />
+          </CardTitle>
+          <Percent className={`h-4 w-4 ${irr !== null && irr > discountRate ? "text-green-500" : "text-amber-500"}`} />
+        </CardHeader>
+        <CardContent>
+          <div className={`text-2xl font-bold ${irr !== null && irr > discountRate ? "text-green-600" : "text-amber-600"}`}>
+            {irr !== null ? `${irr.toFixed(1)}% a.a.` : "N/A"}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            {irr !== null && irr > discountRate ? "Projeto viável (TIR > Taxa)" : irr !== null ? "TIR abaixo da taxa exigida" : "Não convergiu no período"}
           </p>
         </CardContent>
       </Card>
