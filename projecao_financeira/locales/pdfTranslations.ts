@@ -34,6 +34,7 @@ interface TranslationTerms {
 
   // Alterado: Removemos o footer longo e adicionamos assinaturas
   footer_confidential: string; 
+  tax_footnote: string;
   signatures: {
     ceo: string;
     accountant: string;
@@ -61,12 +62,13 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
       financial_revenue: "(+) Receita Financeira",
       financial_expense: "(-) Despesa Financeira",
       ebt: "(=) Lucro Antes IR (EBT)",
-      taxes_profit: "(-) IRPJ / CSLL",
+      taxes_profit: "(-) Imposto s/ Lucro",
       net_result: "(=) LUCRO LÍQUIDO",
       cash_flow: "Fluxo de Caixa Mensal",
       accumulated_cash: "Saldo Acumulado de Caixa"
     },
     footer_confidential: "Documento Confidencial - Uso Interno e Estratégico",
+    tax_footnote: "* Imposto sobre lucro calculado automaticamente à taxa efetiva de {rate}% sobre EBT positivo.",
     signatures: {
         ceo: "Diretor Executivo (CEO)",
         accountant: "Responsável Financeiro / Contador"
@@ -98,6 +100,7 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
       accumulated_cash: "Accumulated Cash Balance"
     },
     footer_confidential: "Confidential Document - Internal and Strategic Use",
+    tax_footnote: "* Profit tax automatically calculated at an effective rate of {rate}% on positive EBT.",
     signatures: {
         ceo: "Chief Executive Officer (CEO)",
         accountant: "Chief Financial Officer (CFO) / Accountant"
@@ -129,6 +132,7 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
       accumulated_cash: "Saldo Acumulado de Caja"
     },
     footer_confidential: "Documento Confidencial - Uso Interno y Estratégico",
+    tax_footnote: "* Impuesto sobre ganancia calculado automáticamente a la tasa efectiva de {rate}% sobre EBT positivo.",
     signatures: {
         ceo: "Director Ejecutivo (CEO)",
         accountant: "Director Financiero / Contador"

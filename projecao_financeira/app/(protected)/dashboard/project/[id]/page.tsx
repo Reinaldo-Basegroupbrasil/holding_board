@@ -55,7 +55,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     fetchProject, 
     isLoading, 
     removeAssumption,
-    importAssumptions 
+    importAssumptions,
+    profitTaxMode,
+    profitTaxRate,
   } = useProjectStore();
   
   // Estado dos Modais e Loadings
@@ -101,7 +103,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         scenario: currentScenario,
         projection: projection,
         lang: lang,
-        chartElementId: 'chart-canvas'
+        chartElementId: 'chart-canvas',
+        taxConfig: { mode: profitTaxMode, rate: profitTaxRate },
       });
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);

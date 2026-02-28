@@ -9,9 +9,10 @@ interface GeneratorProps {
   projection: ProjectionSummary;
   lang: PdfLanguage;
   chartElementId?: string;
+  taxConfig?: { mode: 'manual' | 'auto'; rate: number };
 }
 
-export async function generatePDF({ project, scenario, projection, lang }: GeneratorProps) {
+export async function generatePDF({ project, scenario, projection, lang, taxConfig }: GeneratorProps) {
   const t = translations[lang];
   const doc = new jsPDF('l', 'mm', 'a4'); // Landscape
 
@@ -126,6 +127,16 @@ export async function generatePDF({ project, scenario, projection, lang }: Gener
     });
 
     currentY = (doc as any).lastAutoTable.finalY;
+  }
+
+  // --- Tax footnote (auto mode only) ---
+  if (taxConfig?.mode === 'auto') {
+    currentY += 6;
+    doc.setFontSize(7);
+    doc.setTextColor(120);
+    const footnote = t.tax_footnote.replace('{rate}', taxConfig.rate.toFixed(1));
+    doc.text(footnote, 14, currentY);
+    currentY += 4;
   }
 
   // --- Assinaturas ---

@@ -13,8 +13,11 @@ import {
 } from "@/lib/viabilityMetrics";
 
 export function ViabilitySection() {
-  const { projection, discountRate, setDiscountRate, exchangeRate, targetCurrency } =
-    useProjectStore();
+  const {
+    projection, discountRate, setDiscountRate,
+    profitTaxMode, profitTaxRate, setProfitTaxMode, setProfitTaxRate,
+    exchangeRate, targetCurrency
+  } = useProjectStore();
 
   if (!projection) return null;
 
@@ -79,21 +82,66 @@ export function ViabilitySection() {
             <HelpTooltip text="Métricas financeiras que medem se o projeto vale o investimento. Ajuste a taxa de desconto para simular diferentes cenários de custo de capital." />
           </CardTitle>
 
-          <div className="flex items-center gap-3 bg-white border rounded-lg px-3 py-2 shadow-sm">
-            <label className="text-xs font-medium text-slate-600 whitespace-nowrap">
-              Taxa de Desconto
-            </label>
-            <div className="flex items-center gap-1">
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                step={0.5}
-                value={discountRate}
-                onChange={(e) => setDiscountRate(Number(e.target.value) || 0)}
-                className="w-20 h-8 text-center font-bold text-sm"
-              />
-              <span className="text-xs text-muted-foreground font-medium">% a.a.</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-3 bg-white border rounded-lg px-3 py-2 shadow-sm">
+              <label className="text-xs font-medium text-slate-600 whitespace-nowrap">
+                Taxa de Desconto
+              </label>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={discountRate}
+                  onChange={(e) => setDiscountRate(Number(e.target.value) || 0)}
+                  className="w-20 h-8 text-center font-bold text-sm"
+                />
+                <span className="text-xs text-muted-foreground font-medium">% a.a.</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 bg-white border rounded-lg px-3 py-2 shadow-sm">
+              <label className="text-xs font-medium text-slate-600 whitespace-nowrap">
+                Imposto s/ Lucro
+              </label>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setProfitTaxMode('manual')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    profitTaxMode === 'manual'
+                      ? "bg-slate-800 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  Manual
+                </button>
+                <button
+                  onClick={() => setProfitTaxMode('auto')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    profitTaxMode === 'auto'
+                      ? "bg-amber-500 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  Auto
+                </button>
+              </div>
+              {profitTaxMode === 'auto' && (
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={profitTaxRate}
+                    onChange={(e) => setProfitTaxRate(Number(e.target.value) || 0)}
+                    className="w-20 h-8 text-center font-bold text-sm"
+                  />
+                  <span className="text-xs text-muted-foreground font-medium">%</span>
+                  <HelpTooltip text="Taxa efetiva de imposto sobre lucro aplicada automaticamente ao EBT positivo. Informe o percentual do país do projeto (ex: 34% BR, 21% EUA)." />
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -25,16 +25,18 @@ import {
 const VARIATION_OPTIONS = [10, 20, 30];
 
 export function SensitivitySection() {
-  const { assumptions, discountRate, exchangeRate, targetCurrency } =
+  const { assumptions, discountRate, profitTaxMode, profitTaxRate, exchangeRate, targetCurrency } =
     useProjectStore();
 
   const [variationPct, setVariationPct] = useState(20);
   const [showTable, setShowTable] = useState(false);
 
+  const taxConfig = useMemo(() => ({ mode: profitTaxMode, rate: profitTaxRate }), [profitTaxMode, profitTaxRate]);
+
   const tornadoData = useMemo(() => {
     if (!assumptions || assumptions.length === 0) return [];
-    return buildTornadoData(assumptions, discountRate, variationPct, 10);
-  }, [assumptions, discountRate, variationPct]);
+    return buildTornadoData(assumptions, discountRate, variationPct, 10, taxConfig);
+  }, [assumptions, discountRate, variationPct, taxConfig]);
 
   if (!assumptions || assumptions.length === 0) return null;
   if (tornadoData.length === 0) return null;

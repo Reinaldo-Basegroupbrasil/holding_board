@@ -3,7 +3,7 @@ import { Project, Assumption, ProjectionSummary, Scenario } from '@/types';
 import { projectService } from '@/services/projectService';
 import { assumptionService } from '@/services/assumptionService';
 import { scenarioService } from '@/services/scenarioService';
-import { calculateProjection } from '@/lib/projectionEngine';
+import { calculateProjection, TaxConfig } from '@/lib/projectionEngine';
 
 interface ProjectState {
   // --- DADOS ---
@@ -20,6 +20,8 @@ interface ProjectState {
   exchangeRate: number;    
   targetCurrency: string;
   discountRate: number;
+  profitTaxMode: 'manual' | 'auto';
+  profitTaxRate: number;
 
   // --- AÇÕES ---
   fetchProjects: () => Promise<void>;
@@ -43,6 +45,8 @@ interface ProjectState {
 
   setExchangeRate: (rate: number, currency: string) => void;
   setDiscountRate: (rate: number) => void;
+  setProfitTaxMode: (mode: 'manual' | 'auto') => void;
+  setProfitTaxRate: (rate: number) => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -56,6 +60,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   exchangeRate: 1.0,
   targetCurrency: 'BRL',
   discountRate: 12,
+  profitTaxMode: 'manual',
+  profitTaxRate: 34,
 
   fetchProjects: async () => {
     set({ isLoading: true });
@@ -197,7 +203,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   fetchAssumptions: async (scenarioId) => {
     try {
       const data = await assumptionService.getAssumptions(scenarioId);
-      set({ assumptions: data, projection: calculateProjection(data) });
+      const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
+      set({ assumptions: data, projection: calculateProjection(data, tc) });
     } catch (error) { console.error(error); }
   },
 
@@ -216,30 +223,33 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const created = await assumptionService.createAssumption(assumptionWithScenario);
       if (created) {
         const newList = [...get().assumptions, created];
-        set({ assumptions: newList, projection: calculateProjection(newList) });
+        const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
+        set({ assumptions: newList, projection: calculateProjection(newList, tc) });
       }
     } catch (error) { console.error("Erro add:", error); }
   },
 
   updateAssumption: async (id, updates) => {
     try {
+      const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
       const currentList = get().assumptions;
       const updatedList = currentList.map(item => item.id === id ? { ...item, ...updates } : item);
-      set({ assumptions: updatedList, projection: calculateProjection(updatedList) }); 
+      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc) }); 
 
       const saved = await assumptionService.updateAssumption(id, updates);
       if (saved) {
          const finalList = get().assumptions.map(item => item.id === id ? saved : item);
-         set({ assumptions: finalList, projection: calculateProjection(finalList) });
+         set({ assumptions: finalList, projection: calculateProjection(finalList, tc) });
       }
     } catch (error) { console.error("Erro update:", error); }
   },
 
   removeAssumption: async (id) => {
     try {
+      const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
       const currentList = get().assumptions;
       const updatedList = currentList.filter(item => item.id !== id);
-      set({ assumptions: updatedList, projection: calculateProjection(updatedList) });
+      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc) });
       await assumptionService.deleteAssumption(id);
     } catch (error) { console.error("Erro delete:", error); }
   },
@@ -326,5 +336,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setDiscountRate: (rate: number) => {
     set({ discountRate: rate });
-  }
+  },
+
+  setProfitTaxMode: (mode: 'manual' | 'auto') => {
+    set({ profitTaxMode: mode });
+    const { assumptions, profitTaxRate } = get();
+    const taxConfig = { mode, rate: profitTaxRate };
+    set({ projection: calculateProjection(assumptions, taxConfig) });
+  },
+
+  setProfitTaxRate: (rate: number) => {
+    set({ profitTaxRate: rate });
+    const { assumptions, profitTaxMode } = get();
+    if (profitTaxMode === 'auto') {
+      const taxConfig = { mode: profitTaxMode, rate };
+      set({ projection: calculateProjection(assumptions, taxConfig) });
+    }
+  },
 }));

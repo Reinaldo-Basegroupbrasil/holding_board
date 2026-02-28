@@ -44,7 +44,12 @@ const calculateWithGrowthDelay = (
   return calculateValue(baseAmount, monthsActive, growthRateY1, growthRateY2, growthRateY3, growthType);
 };
 
-export const calculateProjection = (assumptions: Assumption[]): ProjectionSummary => {
+export interface TaxConfig {
+  mode: 'manual' | 'auto';
+  rate: number;
+}
+
+export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxConfig): ProjectionSummary => {
   const MONTHS_TO_PROJECT = 36;
   
   const finiteOrZero = (n: unknown): number => {
@@ -216,7 +221,13 @@ export const calculateProjection = (assumptions: Assumption[]): ProjectionSummar
     const ebit = ebitda - dep;
     const ebt = ebit + finRev - finExp;
     
-    const profitTax = finiteOrZero(results.tax_profit[m].value); // Poderia ser automático (ex: ebt * 0.34)
+    let profitTax: number;
+    if (taxConfig?.mode === 'auto') {
+      profitTax = ebt > 0 ? ebt * (taxConfig.rate / 100) : 0;
+      results.tax_profit[m].value = profitTax;
+    } else {
+      profitTax = finiteOrZero(results.tax_profit[m].value);
+    }
     const netResult = ebt - profitTax;
 
     results.net_revenue[m].value = netRev;
@@ -232,6 +243,8 @@ export const calculateProjection = (assumptions: Assumption[]): ProjectionSummar
   for (let m = 0; m < MONTHS_TO_PROJECT; m++) {
       let monthlyCashFlow = 0;
       assumptions.forEach(item => {
+          if (taxConfig?.mode === 'auto' && item.category === 'tax_profit') return;
+
           const lag = item.payment_lag || 0;
           const originMonth = m - lag;
           const startMonth = item.start_month ?? 1;
@@ -273,6 +286,11 @@ export const calculateProjection = (assumptions: Assumption[]): ProjectionSummar
              }
           }
       });
+
+      // In auto mode, subtract the auto-calculated tax from cash flow
+      if (taxConfig?.mode === 'auto') {
+          monthlyCashFlow -= finiteOrZero(results.tax_profit[m].value);
+      }
       results.cash_flow[m].value = finiteOrZero(monthlyCashFlow);
       accumulatedCash += finiteOrZero(monthlyCashFlow);
       results.cash_accumulated[m].value = accumulatedCash;

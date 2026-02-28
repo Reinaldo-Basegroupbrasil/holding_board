@@ -32,7 +32,7 @@ export function FinancialStatement() {
     financial_revenue: "Rendimentos financeiros.",
     financial_expense: "Juros pagos.",
     ebt: "Lucro Antes dos Impostos.",
-    tax_profit: "IRPJ e CSLL.",
+    tax_profit: "Taxa efetiva aplicada sobre EBT positivo.",
     net_result: "Lucro Líquido Final.",
     cash_flow: "Fluxo de Caixa do Mês.",
     cash_accumulated: "Saldo em Banco."
@@ -282,7 +282,7 @@ export function FinancialStatement() {
               <Row label="(-) Despesas Financeiras" data={totals.financial_expense} preOpValue={preOperational.financial_expense} indent categoryKey="financial_expense" />
               <Row label="(=) EBT" data={totals.ebt} preOpValue={preOperational.ebt} type="subtitle" categoryKey="ebt" />
               
-              <Row label="(-) IRPJ / CSLL" data={totals.tax_profit} preOpValue={preOperational.tax_profit} indent categoryKey="tax_profit" />
+              <Row label="(-) Imposto s/ Lucro" data={totals.tax_profit} preOpValue={preOperational.tax_profit} indent categoryKey="tax_profit" />
               
               <Row label="(=) LUCRO LÍQUIDO" data={totals.net_result} preOpValue={preOperational.net_result} type="total" categoryKey="net_result" />
               

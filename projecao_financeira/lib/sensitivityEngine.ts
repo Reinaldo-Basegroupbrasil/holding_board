@@ -1,5 +1,5 @@
 import { Assumption } from '@/types';
-import { calculateProjection } from './projectionEngine';
+import { calculateProjection, TaxConfig } from './projectionEngine';
 import { calculateNPV, calculateIRR, calculateDiscountedPayback } from './viabilityMetrics';
 
 export interface SensitivityResult {
@@ -36,7 +36,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   investment: 'Investimento',
   financial_revenue: 'Receita Fin.',
   financial_expense: 'Despesa Fin.',
-  tax_profit: 'IR/CSLL',
+  tax_profit: 'Imposto s/ Lucro',
   capital: 'Capital',
   base: 'Métrica Base',
 };
@@ -51,9 +51,10 @@ function cloneAssumptions(assumptions: Assumption[]): Assumption[] {
 
 function extractMetrics(
   assumptions: Assumption[],
-  discountRate: number
+  discountRate: number,
+  taxConfig?: TaxConfig
 ): { npv: number; irr: number | null; ebitda: number; payback: number | null } {
-  const proj = calculateProjection(assumptions);
+  const proj = calculateProjection(assumptions, taxConfig);
   const cashFlows = proj.totals.cash_flow.map(m => m.value);
   const initialCF = proj.preOperational.cash_flow;
   const ebitda = proj.totals.ebitda.reduce((sum, m) => sum + m.value, 0);
@@ -75,7 +76,8 @@ export function runSingleSensitivity(
   targetId: string,
   field: 'amount' | 'growth_rate',
   variations: number[],
-  discountRate: number
+  discountRate: number,
+  taxConfig?: TaxConfig
 ): SingleSensitivityOutput | null {
   const target = assumptions.find(a => a.id === targetId);
   if (!target) return null;
@@ -92,7 +94,7 @@ export function runSingleSensitivity(
       item.growth_rate = baseValue * (1 + pct / 100);
     }
 
-    const metrics = extractMetrics(cloned, discountRate);
+    const metrics = extractMetrics(cloned, discountRate, taxConfig);
     return { variation: pct, ...metrics };
   });
 
@@ -113,9 +115,10 @@ export function buildTornadoData(
   assumptions: Assumption[],
   discountRate: number,
   variationPercent: number = 20,
-  maxItems: number = 10
+  maxItems: number = 10,
+  taxConfig?: TaxConfig
 ): TornadoItem[] {
-  const baseMetrics = extractMetrics(assumptions, discountRate);
+  const baseMetrics = extractMetrics(assumptions, discountRate, taxConfig);
   const vpnBase = baseMetrics.npv;
 
   const candidates = assumptions.filter(a => a.category !== 'base' && a.amount !== 0);
@@ -124,12 +127,12 @@ export function buildTornadoData(
     const downClone = cloneAssumptions(assumptions);
     const downItem = downClone.find(a => a.id === target.id)!;
     downItem.amount = target.amount * (1 - variationPercent / 100);
-    const downMetrics = extractMetrics(downClone, discountRate);
+    const downMetrics = extractMetrics(downClone, discountRate, taxConfig);
 
     const upClone = cloneAssumptions(assumptions);
     const upItem = upClone.find(a => a.id === target.id)!;
     upItem.amount = target.amount * (1 + variationPercent / 100);
-    const upMetrics = extractMetrics(upClone, discountRate);
+    const upMetrics = extractMetrics(upClone, discountRate, taxConfig);
 
     return {
       assumptionId: target.id,
