@@ -3,6 +3,7 @@
 import { Fragment } from "react";
 import { Edit, Trash2, Link as LinkIcon, Layers, ArrowUpRight } from "lucide-react";
 import { Assumption } from "@/types";
+import { useProjectStore } from "@/store/projectStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -16,7 +17,9 @@ interface Props {
 }
 
 export function AssumptionList({ assumptions = [], onEdit, onDelete, typeFilter }: Props) {
-  
+  const { currentProject } = useProjectStore();
+  const displayCurrency = currentProject?.currency_main || 'BRL';
+
   // DICIONÁRIO DE TRADUÇÃO E CORES (CORRIGIDO)
   // Agora as chaves batem exatamente com o banco de dados (cost_fixed, cost_variable)
   const categoryConfig: Record<string, { label: string; color: string; textColor: string; order: number }> = {
@@ -41,7 +44,7 @@ export function AssumptionList({ assumptions = [], onEdit, onDelete, typeFilter 
   const formatValue = (amount: number, format?: string) => {
     if (format === 'percent') return `${amount}%`;
     if (format === 'number') return new Intl.NumberFormat('pt-BR').format(amount);
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: displayCurrency, maximumFractionDigits: 2 }).format(amount);
   };
 
   const getDriverName = (driverId: string | null | undefined) => {

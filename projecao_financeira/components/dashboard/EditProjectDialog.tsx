@@ -25,7 +25,8 @@ export function EditProjectDialog({ isOpen, onClose, project }: Props) {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    currency_main: "BRL"
+    currency_main: "BRL",
+    projection_months: 36
   });
 
   useEffect(() => {
@@ -33,7 +34,8 @@ export function EditProjectDialog({ isOpen, onClose, project }: Props) {
       setFormData({
         name: project.name,
         description: project.description || "",
-        currency_main: project.currency_main || "BRL"
+        currency_main: project.currency_main || "BRL",
+        projection_months: project.projection_months || 36
       });
     }
   }, [project, isOpen]);
@@ -98,6 +100,24 @@ export function EditProjectDialog({ isOpen, onClose, project }: Props) {
               </SelectContent>
             </Select>
             <p className="text-[10px] text-muted-foreground">Isso altera o símbolo da moeda em todo o sistema.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Período de Projeção</Label>
+            <Select 
+              value={String(formData.projection_months)} 
+              onValueChange={(val) => setFormData({...formData, projection_months: Number(val)})}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="12">1 Ano (12 meses)</SelectItem>
+                <SelectItem value="24">2 Anos (24 meses)</SelectItem>
+                <SelectItem value="36">3 Anos (36 meses)</SelectItem>
+                <SelectItem value="48">4 Anos (48 meses)</SelectItem>
+                <SelectItem value="60">5 Anos (60 meses)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground">Define quantos meses a projeção vai cobrir. Afeta DRE, caixa e indicadores.</p>
           </div>
 
           <DialogFooter className="flex justify-between items-center sm:justify-between">

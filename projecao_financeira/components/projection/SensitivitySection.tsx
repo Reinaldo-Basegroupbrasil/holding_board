@@ -25,7 +25,7 @@ import {
 const VARIATION_OPTIONS = [10, 20, 30];
 
 export function SensitivitySection() {
-  const { assumptions, discountRate, profitTaxMode, profitTaxRate, exchangeRate, targetCurrency } =
+  const { assumptions, discountRate, profitTaxMode, profitTaxRate, exchangeRate, targetCurrency, currentProject } =
     useProjectStore();
 
   const [variationPct, setVariationPct] = useState(20);
@@ -35,8 +35,9 @@ export function SensitivitySection() {
 
   const tornadoData = useMemo(() => {
     if (!assumptions || assumptions.length === 0) return [];
-    return buildTornadoData(assumptions, discountRate, variationPct, 10, taxConfig);
-  }, [assumptions, discountRate, variationPct, taxConfig]);
+    const months = currentProject?.projection_months || 36;
+    return buildTornadoData(assumptions, discountRate, variationPct, 10, taxConfig, months);
+  }, [assumptions, discountRate, variationPct, taxConfig, currentProject?.projection_months]);
 
   if (!assumptions || assumptions.length === 0) return null;
   if (tornadoData.length === 0) return null;

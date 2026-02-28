@@ -8,7 +8,7 @@ export function annualToMonthlyRate(annualPercent: number): number {
 /**
  * Valor Presente Líquido (VPL / NPV).
  *
- * @param monthlyCashFlows - Array de fluxos de caixa mensais (36 meses)
+ * @param monthlyCashFlows - Array de fluxos de caixa mensais (N meses, conforme configuração do projeto)
  * @param annualRatePercent - Taxa de desconto anual em % (ex: 12 = 12%)
  * @param initialCashFlow - Fluxo de caixa do mês 0 (setup, geralmente negativo)
  */

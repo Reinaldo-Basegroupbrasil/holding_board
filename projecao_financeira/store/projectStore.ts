@@ -23,6 +23,10 @@ interface ProjectState {
   profitTaxMode: 'manual' | 'auto';
   profitTaxRate: number;
 
+  compareMode: boolean;
+  compareScenarioIds: string[];
+  compareProjections: Record<string, { scenario: Scenario; projection: ProjectionSummary }>;
+
   // --- AÇÕES ---
   fetchProjects: () => Promise<void>;
   createProject: (data: Partial<Project>) => Promise<Project | null>;
@@ -47,6 +51,10 @@ interface ProjectState {
   setDiscountRate: (rate: number) => void;
   setProfitTaxMode: (mode: 'manual' | 'auto') => void;
   setProfitTaxRate: (rate: number) => void;
+
+  setCompareMode: (on: boolean) => void;
+  toggleCompareScenario: (scenarioId: string) => void;
+  loadCompareProjections: () => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -62,6 +70,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   discountRate: 12,
   profitTaxMode: 'manual',
   profitTaxRate: 34,
+
+  compareMode: false,
+  compareScenarioIds: [],
+  compareProjections: {},
 
   fetchProjects: async () => {
     set({ isLoading: true });
@@ -87,6 +99,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         set({ currentProject: updated });
         set((state) => ({ projects: state.projects.map(p => p.id === id ? updated : p) }));
         if (data.currency_main) set({ targetCurrency: data.currency_main, exchangeRate: 1.0 });
+        if (data.projection_months) {
+          const { assumptions, profitTaxMode, profitTaxRate } = get();
+          const tc: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
+          set({ projection: calculateProjection(assumptions, tc, data.projection_months) });
+        }
       }
     } catch (error) { console.error("Erro update:", error); }
   },
@@ -142,16 +159,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   createScenario: async (name: string) => {
-    const { currentScenario } = get();
-    if (!currentScenario) return;
+    const { currentScenario, currentProject } = get();
+    if (!currentScenario || !currentProject) return;
 
     set({ isLoading: true });
     try {
-      const newScenario = await scenarioService.cloneScenario(currentScenario.id, name);
-      if (newScenario) {
-        set(state => ({ scenarios: [...state.scenarios, newScenario] }));
-        await get().changeScenario(newScenario.id);
+      const newScenario = await scenarioService.createScenarioRow(currentProject.id, name);
+      if (!newScenario) return;
+
+      const sourceAssumptions = await assumptionService.getAssumptions(currentScenario.id);
+      const idMap: Record<string, string> = {};
+
+      const parentBases = sourceAssumptions.filter(a => a.category === 'base' && !a.driver_id);
+      const childBases = sourceAssumptions.filter(a => a.category === 'base' && a.driver_id);
+      const others = sourceAssumptions.filter(a => a.category !== 'base');
+
+      for (const item of parentBases) {
+        const { id, created_at, ...rest } = item;
+        const payload = { ...rest, project_id: currentProject.id, scenario_id: newScenario.id };
+        const created = await assumptionService.createAssumption(payload as any);
+        if (created) idMap[item.id] = created.id;
       }
+
+      for (const item of childBases) {
+        const { id, created_at, ...rest } = item;
+        const newDriverId = rest.driver_id && idMap[rest.driver_id] ? idMap[rest.driver_id] : null;
+        const payload = { ...rest, driver_id: newDriverId, project_id: currentProject.id, scenario_id: newScenario.id };
+        const created = await assumptionService.createAssumption(payload as any);
+        if (created) idMap[item.id] = created.id;
+      }
+
+      for (const item of others) {
+        const { id, created_at, ...rest } = item;
+        const newDriverId = rest.driver_id && idMap[rest.driver_id] ? idMap[rest.driver_id] : null;
+        const payload = { ...rest, driver_id: newDriverId, project_id: currentProject.id, scenario_id: newScenario.id };
+        const created = await assumptionService.createAssumption(payload as any);
+        if (created) idMap[item.id] = created.id;
+      }
+
+      set(state => ({ scenarios: [...state.scenarios, newScenario] }));
+      await get().changeScenario(newScenario.id);
     } catch (error) {
       console.error("Erro ao clonar cenário:", error);
     } finally {
@@ -204,7 +251,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const data = await assumptionService.getAssumptions(scenarioId);
       const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
-      set({ assumptions: data, projection: calculateProjection(data, tc) });
+      const months = get().currentProject?.projection_months || 36;
+      set({ assumptions: data, projection: calculateProjection(data, tc, months) });
     } catch (error) { console.error(error); }
   },
 
@@ -224,7 +272,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (created) {
         const newList = [...get().assumptions, created];
         const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
-        set({ assumptions: newList, projection: calculateProjection(newList, tc) });
+        const months = get().currentProject?.projection_months || 36;
+        set({ assumptions: newList, projection: calculateProjection(newList, tc, months) });
       }
     } catch (error) { console.error("Erro add:", error); }
   },
@@ -232,14 +281,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   updateAssumption: async (id, updates) => {
     try {
       const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
+      const months = get().currentProject?.projection_months || 36;
       const currentList = get().assumptions;
       const updatedList = currentList.map(item => item.id === id ? { ...item, ...updates } : item);
-      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc) }); 
+      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc, months) }); 
 
       const saved = await assumptionService.updateAssumption(id, updates);
       if (saved) {
          const finalList = get().assumptions.map(item => item.id === id ? saved : item);
-         set({ assumptions: finalList, projection: calculateProjection(finalList, tc) });
+         set({ assumptions: finalList, projection: calculateProjection(finalList, tc, months) });
       }
     } catch (error) { console.error("Erro update:", error); }
   },
@@ -247,9 +297,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   removeAssumption: async (id) => {
     try {
       const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
+      const months = get().currentProject?.projection_months || 36;
       const currentList = get().assumptions;
       const updatedList = currentList.filter(item => item.id !== id);
-      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc) });
+      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc, months) });
       await assumptionService.deleteAssumption(id);
     } catch (error) { console.error("Erro delete:", error); }
   },
@@ -340,17 +391,63 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setProfitTaxMode: (mode: 'manual' | 'auto') => {
     set({ profitTaxMode: mode });
-    const { assumptions, profitTaxRate } = get();
+    const { assumptions, profitTaxRate, currentProject } = get();
     const taxConfig = { mode, rate: profitTaxRate };
-    set({ projection: calculateProjection(assumptions, taxConfig) });
+    const months = currentProject?.projection_months || 36;
+    set({ projection: calculateProjection(assumptions, taxConfig, months) });
   },
 
   setProfitTaxRate: (rate: number) => {
     set({ profitTaxRate: rate });
-    const { assumptions, profitTaxMode } = get();
+    const { assumptions, profitTaxMode, currentProject } = get();
     if (profitTaxMode === 'auto') {
       const taxConfig = { mode: profitTaxMode, rate };
-      set({ projection: calculateProjection(assumptions, taxConfig) });
+      const months = currentProject?.projection_months || 36;
+      set({ projection: calculateProjection(assumptions, taxConfig, months) });
+    }
+  },
+
+  // --- COMPARAÇÃO DE CENÁRIOS ---
+
+  setCompareMode: (on: boolean) => {
+    if (!on) {
+      set({ compareMode: false, compareScenarioIds: [], compareProjections: {} });
+    } else {
+      set({ compareMode: true });
+    }
+  },
+
+  toggleCompareScenario: (scenarioId: string) => {
+    const { compareScenarioIds } = get();
+    if (compareScenarioIds.includes(scenarioId)) {
+      set({ compareScenarioIds: compareScenarioIds.filter(id => id !== scenarioId) });
+    } else if (compareScenarioIds.length < 3) {
+      set({ compareScenarioIds: [...compareScenarioIds, scenarioId] });
+    }
+  },
+
+  loadCompareProjections: async () => {
+    const { compareScenarioIds, scenarios, profitTaxMode, profitTaxRate, currentProject } = get();
+    if (compareScenarioIds.length < 2) return;
+
+    set({ isLoading: true });
+    try {
+      const taxConfig: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
+      const months = currentProject?.projection_months || 36;
+      const result: Record<string, { scenario: Scenario; projection: ProjectionSummary }> = {};
+
+      for (const sid of compareScenarioIds) {
+        const scenario = scenarios.find(s => s.id === sid);
+        if (!scenario) continue;
+        const data = await assumptionService.getAssumptions(sid);
+        result[sid] = { scenario, projection: calculateProjection(data, taxConfig, months) };
+      }
+
+      set({ compareProjections: result, compareMode: true });
+    } catch (error) {
+      console.error("Erro ao carregar comparação:", error);
+    } finally {
+      set({ isLoading: false });
     }
   },
 }));

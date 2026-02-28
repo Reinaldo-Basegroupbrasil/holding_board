@@ -1,17 +1,13 @@
 import { Assumption, MonthlyData, ProjectionSummary, ProjectionTotals } from '@/types';
 
-const calculateValue = (
+export const calculateValue = (
   baseAmount: number, 
   monthIndex: number, 
-  growthRateY1: number = 0,
-  growthRateY2: number = 0,
-  growthRateY3: number = 0,
+  rates: number[],
   growthType: 'percentage' | 'linear' = 'percentage'
 ): number => {
-  let rate = 0;
-  if (monthIndex < 12) rate = growthRateY1;
-  else if (monthIndex < 24) rate = growthRateY2;
-  else rate = growthRateY3;
+  const yearIdx = Math.floor(monthIndex / 12);
+  const rate = rates[Math.min(yearIdx, rates.length - 1)] || 0;
 
   if (rate === 0) return baseAmount;
 
@@ -23,15 +19,21 @@ const calculateValue = (
   }
 };
 
-const calculateWithGrowthDelay = (
+export const buildRates = (item: Assumption): number[] => [
+  item.growth_rate ?? 0,
+  item.growth_rate_y2 ?? item.growth_rate ?? 0,
+  item.growth_rate_y3 ?? item.growth_rate_y2 ?? item.growth_rate ?? 0,
+  item.growth_rate_y4 ?? item.growth_rate_y3 ?? item.growth_rate_y2 ?? item.growth_rate ?? 0,
+  item.growth_rate_y5 ?? item.growth_rate_y4 ?? item.growth_rate_y3 ?? item.growth_rate_y2 ?? item.growth_rate ?? 0,
+];
+
+export const calculateWithGrowthDelay = (
   baseAmount: number,
   monthsActive: number,
   absoluteMonth: number,
   startMonth: number,
   growthStartMonth: number | null | undefined,
-  growthRateY1: number,
-  growthRateY2: number,
-  growthRateY3: number,
+  rates: number[],
   growthType: 'percentage' | 'linear' = 'percentage'
 ): number => {
   if (growthStartMonth && growthStartMonth > startMonth && absoluteMonth < growthStartMonth) {
@@ -39,9 +41,9 @@ const calculateWithGrowthDelay = (
   }
   if (growthStartMonth && growthStartMonth > startMonth) {
     const growthMonths = absoluteMonth - growthStartMonth + 1;
-    return calculateValue(baseAmount, growthMonths, growthRateY1, growthRateY2, growthRateY3, growthType);
+    return calculateValue(baseAmount, growthMonths, rates, growthType);
   }
-  return calculateValue(baseAmount, monthsActive, growthRateY1, growthRateY2, growthRateY3, growthType);
+  return calculateValue(baseAmount, monthsActive, rates, growthType);
 };
 
 export interface TaxConfig {
@@ -49,8 +51,8 @@ export interface TaxConfig {
   rate: number;
 }
 
-export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxConfig): ProjectionSummary => {
-  const MONTHS_TO_PROJECT = 36;
+export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxConfig, monthsToProject: number = 36): ProjectionSummary => {
+  const MONTHS_TO_PROJECT = monthsToProject;
   
   const finiteOrZero = (n: unknown): number => {
     const num = typeof n === 'number' ? n : Number(n);
@@ -129,9 +131,7 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
               m + 1,
               startMonth,
               item.growth_start_month,
-              finiteOrZero(item.growth_rate),
-              finiteOrZero(item.growth_rate_y2),
-              finiteOrZero(item.growth_rate_y3),
+              buildRates(item),
               item.growth_type
             );
         }
@@ -168,9 +168,7 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
           m + 1,
           startMonth,
           item.growth_start_month,
-          finiteOrZero(item.growth_rate),
-          finiteOrZero(item.growth_rate_y2),
-          finiteOrZero(item.growth_rate_y3),
+          buildRates(item),
           item.growth_type
         );
 
@@ -261,9 +259,7 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
                    originMonth + 1,
                    startMonth,
                    item.growth_start_month,
-                   finiteOrZero(item.growth_rate),
-                   finiteOrZero(item.growth_rate_y2),
-                   finiteOrZero(item.growth_rate_y3),
+                   buildRates(item),
                    item.growth_type
                  );
                  
@@ -310,9 +306,7 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
                i + 1,
                startMonth,
                a.growth_start_month,
-               finiteOrZero(a.growth_rate),
-               finiteOrZero(a.growth_rate_y2),
-               finiteOrZero(a.growth_rate_y3),
+               buildRates(a),
                a.growth_type
              );
              if (a.category !== 'base' && a.driver_id && driverValues[a.driver_id]) {

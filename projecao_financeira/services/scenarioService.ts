@@ -15,7 +15,7 @@ export const scenarioService = {
     return data || [];
   },
 
-  // 2. Clonar (Criar Novo)
+  // 2. Clonar (Criar Novo) - via RPC (legacy, não remapeia driver_id)
   async cloneScenario(sourceScenarioId: string, newName: string): Promise<Scenario | null> {
     const supabase = createClient();
     const { data: newId, error } = await supabase
@@ -34,6 +34,19 @@ export const scenarioService = {
     
     if (fetchError) throw fetchError;
     return newScenario;
+  },
+
+  // 2b. Criar cenário vazio (para clone client-side com remapeamento)
+  async createScenarioRow(projectId: string, name: string): Promise<Scenario | null> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('scenarios')
+      .insert({ project_id: projectId, name, is_base: false })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   },
 
   // 3. Atualizar (Renomear) - NOVO

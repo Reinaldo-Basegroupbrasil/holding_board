@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from "react"; 
 import Link from "next/link";
-import { ArrowLeft, Plus, Settings, Download, Loader2, FileText, Globe, Upload, Database } from "lucide-react";
+import { ArrowLeft, Plus, Settings, Download, Loader2, FileText, Globe, Upload, Database, ArrowRightLeft } from "lucide-react";
 
 import { useProjectStore } from "@/store/projectStore";
 import { Assumption } from "@/types";
@@ -24,6 +24,8 @@ import { AssumptionList } from "@/components/assumptions/AssumptionList";
 import { FinancialStatement } from "@/components/projection/FinancialStatement";
 import { ViabilitySection } from "@/components/projection/ViabilitySection";
 import { SensitivitySection } from "@/components/projection/SensitivitySection";
+import { ScenarioComparison } from "@/components/projection/ScenarioComparison";
+import { CompareDialog } from "@/components/projection/CompareDialog";
 import { EditProjectDialog } from "@/components/dashboard/EditProjectDialog";
 
 // Novos Componentes da Sprint 3
@@ -58,6 +60,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     importAssumptions,
     profitTaxMode,
     profitTaxRate,
+    scenarios,
+    compareMode,
   } = useProjectStore();
   
   // Estado dos Modais e Loadings
@@ -67,6 +71,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [editingAssumption, setEditingAssumption] = useState<Assumption | undefined>(undefined);
   const [isExporting, setIsExporting] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [isCompareDialogOpen, setIsCompareDialogOpen] = useState(false);
 
   useEffect(() => {
     if (projectId) {
@@ -159,7 +164,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             {currentProject?.name}
           </h1>
           <p className="text-muted-foreground">
-            {currentProject?.description || "Projeto Financeiro"} • Moeda Base: {currentProject?.currency_main || "BRL"}
+            {currentProject?.description || "Projeto Financeiro"} • Moeda Base: {currentProject?.currency_main || "BRL"} • {currentProject?.projection_months || 36} meses
           </p>
         </div>
 
@@ -247,7 +252,26 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         </TabsContent>
 
         <TabsContent value="results" className="mt-6 animate-in fade-in-50">
-          <FinancialStatement />
+          {compareMode ? (
+            <ScenarioComparison />
+          ) : (
+            <>
+              <div className="flex justify-end mb-2">
+                {scenarios.length >= 2 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsCompareDialogOpen(true)}
+                    className="gap-2 text-slate-600"
+                  >
+                    <ArrowRightLeft className="h-4 w-4" />
+                    Comparar Cenários
+                  </Button>
+                )}
+              </div>
+              <FinancialStatement />
+            </>
+          )}
           <ViabilitySection />
           <SensitivitySection />
         </TabsContent>
@@ -269,6 +293,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           project={currentProject} 
         />
       )}
+
+      <CompareDialog open={isCompareDialogOpen} onOpenChange={setIsCompareDialogOpen} />
 
       {/* Modal de Importação */}
       <Dialog open={isImportDialogOpen} onOpenChange={(open) => { setIsImportDialogOpen(open); if (!open) setImportStatus(null); }}>

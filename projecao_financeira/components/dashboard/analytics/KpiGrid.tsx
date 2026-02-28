@@ -7,7 +7,9 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { calculateNPV, calculateIRR } from "@/lib/viabilityMetrics";
 
 export function KpiGrid() {
-  const { projection, isLoading, exchangeRate, targetCurrency, discountRate } = useProjectStore();
+  const { projection, isLoading, exchangeRate, targetCurrency, discountRate, currentProject } = useProjectStore();
+  const projectionMonths = currentProject?.projection_months || 36;
+  const projectionYears = Math.ceil(projectionMonths / 12);
 
   if (isLoading || !projection) {
     return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 h-32 animate-pulse bg-slate-100 rounded-lg" />;
@@ -109,7 +111,7 @@ export function KpiGrid() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium flex items-center">
-            Receita Total (3 Anos)
+            Receita Total ({projectionYears} {projectionYears === 1 ? 'Ano' : 'Anos'})
             <HelpTooltip text="O volume total de vendas brutas acumuladas no período. Mostra o tamanho (escala) que o negócio pode atingir." />
           </CardTitle>
           <PiggyBank className="h-4 w-4 text-orange-500" />

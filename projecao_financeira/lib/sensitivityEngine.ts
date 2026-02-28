@@ -52,9 +52,10 @@ function cloneAssumptions(assumptions: Assumption[]): Assumption[] {
 function extractMetrics(
   assumptions: Assumption[],
   discountRate: number,
-  taxConfig?: TaxConfig
+  taxConfig?: TaxConfig,
+  monthsToProject?: number
 ): { npv: number; irr: number | null; ebitda: number; payback: number | null } {
-  const proj = calculateProjection(assumptions, taxConfig);
+  const proj = calculateProjection(assumptions, taxConfig, monthsToProject);
   const cashFlows = proj.totals.cash_flow.map(m => m.value);
   const initialCF = proj.preOperational.cash_flow;
   const ebitda = proj.totals.ebitda.reduce((sum, m) => sum + m.value, 0);
@@ -77,7 +78,8 @@ export function runSingleSensitivity(
   field: 'amount' | 'growth_rate',
   variations: number[],
   discountRate: number,
-  taxConfig?: TaxConfig
+  taxConfig?: TaxConfig,
+  monthsToProject?: number
 ): SingleSensitivityOutput | null {
   const target = assumptions.find(a => a.id === targetId);
   if (!target) return null;
@@ -94,7 +96,7 @@ export function runSingleSensitivity(
       item.growth_rate = baseValue * (1 + pct / 100);
     }
 
-    const metrics = extractMetrics(cloned, discountRate, taxConfig);
+    const metrics = extractMetrics(cloned, discountRate, taxConfig, monthsToProject);
     return { variation: pct, ...metrics };
   });
 
@@ -116,9 +118,10 @@ export function buildTornadoData(
   discountRate: number,
   variationPercent: number = 20,
   maxItems: number = 10,
-  taxConfig?: TaxConfig
+  taxConfig?: TaxConfig,
+  monthsToProject?: number
 ): TornadoItem[] {
-  const baseMetrics = extractMetrics(assumptions, discountRate, taxConfig);
+  const baseMetrics = extractMetrics(assumptions, discountRate, taxConfig, monthsToProject);
   const vpnBase = baseMetrics.npv;
 
   const candidates = assumptions.filter(a => a.category !== 'base' && a.amount !== 0);
@@ -127,12 +130,12 @@ export function buildTornadoData(
     const downClone = cloneAssumptions(assumptions);
     const downItem = downClone.find(a => a.id === target.id)!;
     downItem.amount = target.amount * (1 - variationPercent / 100);
-    const downMetrics = extractMetrics(downClone, discountRate, taxConfig);
+    const downMetrics = extractMetrics(downClone, discountRate, taxConfig, monthsToProject);
 
     const upClone = cloneAssumptions(assumptions);
     const upItem = upClone.find(a => a.id === target.id)!;
     upItem.amount = target.amount * (1 + variationPercent / 100);
-    const upMetrics = extractMetrics(upClone, discountRate, taxConfig);
+    const upMetrics = extractMetrics(upClone, discountRate, taxConfig, monthsToProject);
 
     return {
       assumptionId: target.id,

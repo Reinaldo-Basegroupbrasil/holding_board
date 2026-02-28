@@ -22,6 +22,8 @@ function sanitizeAssumptionFromDb(row: any): Assumption {
     growth_rate: row?.growth_rate === null ? undefined : toNumberOrZero(row?.growth_rate),
     growth_rate_y2: row?.growth_rate_y2 === null ? undefined : toNumberOrZero(row?.growth_rate_y2),
     growth_rate_y3: row?.growth_rate_y3 === null ? undefined : toNumberOrZero(row?.growth_rate_y3),
+    growth_rate_y4: row?.growth_rate_y4 === null ? undefined : toNumberOrZero(row?.growth_rate_y4),
+    growth_rate_y5: row?.growth_rate_y5 === null ? undefined : toNumberOrZero(row?.growth_rate_y5),
     start_month: row?.start_month === null || row?.start_month === undefined ? undefined : toNumberOrZero(row?.start_month),
     end_month: row?.end_month === null || row?.end_month === undefined ? undefined : toNumberOrZero(row?.end_month),
     amortization_period: row?.amortization_period === null || row?.amortization_period === undefined ? undefined : toNumberOrZero(row?.amortization_period),

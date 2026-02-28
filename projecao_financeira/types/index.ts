@@ -16,6 +16,8 @@ export interface Assumption {
   growth_rate?: number;
   growth_rate_y2?: number | null;
   growth_rate_y3?: number | null;
+  growth_rate_y4?: number | null;
+  growth_rate_y5?: number | null;
   start_month?: number; 
   end_month?: number | null;
   driver_id?: string | null;
@@ -101,6 +103,7 @@ export interface Project {
   name: string;
   description?: string;
   currency_main: string;
+  projection_months?: number;
   created_at: string;
   updated_at: string;
   user_id: string;

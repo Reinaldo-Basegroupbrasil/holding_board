@@ -38,6 +38,8 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
     growth_rate: 0,
     growth_rate_y2: 0,
     growth_rate_y3: 0,
+    growth_rate_y4: 0,
+    growth_rate_y5: 0,
     start_month: 1,
     end_month: undefined, 
     payment_lag: 0,
@@ -48,7 +50,11 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
     growth_start_month: undefined
   });
 
-  // Carrega dados ao editar (Convertendo nulls para valores seguros)
+  const projectionMonths = currentProject?.projection_months || 36;
+  const numberOfYears = Math.ceil(projectionMonths / 12);
+
+  const growthFieldKeys: (keyof Assumption)[] = ['growth_rate', 'growth_rate_y2', 'growth_rate_y3', 'growth_rate_y4', 'growth_rate_y5'];
+
   useEffect(() => {
     if (isOpen) {
       if (assumptionToEdit) {
@@ -59,6 +65,8 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
             end_month: assumptionToEdit.end_month || undefined,
             growth_rate_y2: assumptionToEdit.growth_rate_y2 || 0,
             growth_rate_y3: assumptionToEdit.growth_rate_y3 || 0,
+            growth_rate_y4: assumptionToEdit.growth_rate_y4 || 0,
+            growth_rate_y5: assumptionToEdit.growth_rate_y5 || 0,
             growth_start_month: assumptionToEdit.growth_start_month || undefined,
         });
         setHasGrowth(!!(assumptionToEdit.growth_rate && assumptionToEdit.growth_rate > 0));
@@ -73,6 +81,8 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
           growth_rate: 0,
           growth_rate_y2: 0,
           growth_rate_y3: 0,
+          growth_rate_y4: 0,
+          growth_rate_y5: 0,
           start_month: 1,
           end_month: undefined,
           payment_lag: 0,
@@ -118,6 +128,8 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
         growth_rate: Number(formData.growth_rate || 0),
         growth_rate_y2: formData.growth_rate_y2 ? Number(formData.growth_rate_y2) : null,
         growth_rate_y3: formData.growth_rate_y3 ? Number(formData.growth_rate_y3) : null,
+        growth_rate_y4: formData.growth_rate_y4 ? Number(formData.growth_rate_y4) : null,
+        growth_rate_y5: formData.growth_rate_y5 ? Number(formData.growth_rate_y5) : null,
         start_month: Number(formData.start_month),
         end_month: formData.end_month ? Number(formData.end_month) : null,
         
@@ -223,7 +235,7 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
                     <Select value={formData.format} onValueChange={(v) => handleChange("format", v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="currency">Moeda (R$)</SelectItem>
+                            <SelectItem value="currency">Moeda ({currentProject?.currency_main || 'BRL'})</SelectItem>
                             <SelectItem value="number">Número (Unidades)</SelectItem>
                             <SelectItem value="percent">Percentual (%)</SelectItem>
                         </SelectContent>
@@ -358,6 +370,8 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
                                 growth_rate: 0,
                                 growth_rate_y2: 0,
                                 growth_rate_y3: 0,
+                                growth_rate_y4: 0,
+                                growth_rate_y5: 0,
                                 growth_start_month: undefined,
                             }));
                         }}
@@ -396,6 +410,8 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
                                         growth_rate: 0,
                                         growth_rate_y2: 0,
                                         growth_rate_y3: 0,
+                                        growth_rate_y4: 0,
+                                        growth_rate_y5: 0,
                                         growth_start_month: undefined,
                                     }));
                                 }
@@ -417,43 +433,26 @@ export function NewAssumptionDialog({ projectId, isOpen, onClose, assumptionToEd
                                 </select>
                             </div>
                             
-                            <div className="grid grid-cols-3 gap-3">
-                                <div className="space-y-1">
-                                    <Label className="text-xs">
-                                        {formData.growth_type === 'linear' ? 'Valor/mês Ano 1' : 'Taxa Ano 1'}
-                                    </Label>
-                                    <Input 
-                                        type="number" 
-                                        step="0.1" 
-                                        placeholder={formData.growth_type === 'linear' ? '500' : '10'}
-                                        value={formData.growth_rate ?? ""}
-                                        onChange={(e) => handleChange("growth_rate", e.target.value)} 
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs">
-                                        {formData.growth_type === 'linear' ? 'Valor/mês Ano 2' : 'Taxa Ano 2'}
-                                    </Label>
-                                    <Input 
-                                        type="number" 
-                                        step="0.1" 
-                                        className="bg-blue-50/50" 
-                                        value={formData.growth_rate_y2 ?? ""}
-                                        onChange={(e) => handleChange("growth_rate_y2", e.target.value)} 
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs">
-                                        {formData.growth_type === 'linear' ? 'Valor/mês Ano 3' : 'Taxa Ano 3'}
-                                    </Label>
-                                    <Input 
-                                        type="number" 
-                                        step="0.1" 
-                                        className="bg-blue-50/50" 
-                                        value={formData.growth_rate_y3 ?? ""}
-                                        onChange={(e) => handleChange("growth_rate_y3", e.target.value)} 
-                                    />
-                                </div>
+                            <div className={`grid gap-3`} style={{ gridTemplateColumns: `repeat(${Math.min(numberOfYears, 5)}, 1fr)` }}>
+                                {Array.from({ length: Math.min(numberOfYears, 5) }, (_, i) => {
+                                    const fieldKey = growthFieldKeys[i];
+                                    const yearNum = i + 1;
+                                    return (
+                                        <div key={fieldKey} className="space-y-1">
+                                            <Label className="text-xs">
+                                                {formData.growth_type === 'linear' ? `Valor/mês Ano ${yearNum}` : `Taxa Ano ${yearNum}`}
+                                            </Label>
+                                            <Input 
+                                                type="number" 
+                                                step="0.1" 
+                                                placeholder={formData.growth_type === 'linear' ? '500' : '10'}
+                                                className={i > 0 ? "bg-blue-50/50" : ""}
+                                                value={(formData as any)[fieldKey] ?? ""}
+                                                onChange={(e) => handleChange(fieldKey, e.target.value)} 
+                                            />
+                                        </div>
+                                    );
+                                })}
                             </div>
 
                             <div className="space-y-1 pt-2 border-t border-slate-200">

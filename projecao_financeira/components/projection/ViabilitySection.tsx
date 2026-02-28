@@ -69,7 +69,7 @@ export function ViabilitySection() {
       positive: profitIndex !== null && profitIndex > 1,
       icon: BarChart3,
       tooltip:
-        "Para cada R$1 investido, quanto retorna em valor presente. IL > 1 indica que o projeto gera mais do que consome.",
+        `Para cada 1 ${targetCurrency} investido, quanto retorna em valor presente. IL > 1 indica que o projeto gera mais do que consome.`,
     },
   ];
 

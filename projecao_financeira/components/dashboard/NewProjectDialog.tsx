@@ -29,7 +29,8 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    currency_main: "BRL"
+    currency_main: "BRL",
+    projection_months: 36
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,7 +41,7 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
     try {
       await createProject(formData);
       // Limpa o form e fecha
-      setFormData({ name: "", description: "", currency_main: "BRL" });
+      setFormData({ name: "", description: "", currency_main: "BRL", projection_months: 36 });
       onClose(); 
     } catch (error) {
       console.error("Erro ao criar projeto:", error);
@@ -83,6 +84,22 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
                 <option value="BRL">Real Brasileiro (BRL)</option>
                 <option value="USD">Dólar Americano (USD)</option>
                 <option value="EUR">Euro (EUR)</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="period">Período de Projeção</Label>
+            <select 
+              id="period"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={formData.projection_months}
+              onChange={(e) => setFormData({...formData, projection_months: Number(e.target.value)})}
+            >
+                <option value={12}>1 Ano (12 meses)</option>
+                <option value={24}>2 Anos (24 meses)</option>
+                <option value={36}>3 Anos (36 meses)</option>
+                <option value={48}>4 Anos (48 meses)</option>
+                <option value={60}>5 Anos (60 meses)</option>
             </select>
           </div>
 
