@@ -22,6 +22,8 @@ import {
 import { NewAssumptionDialog } from "@/components/assumptions/NewAssumptionDialog";
 import { AssumptionList } from "@/components/assumptions/AssumptionList";
 import { FinancialStatement } from "@/components/projection/FinancialStatement";
+import { ViabilitySection } from "@/components/projection/ViabilitySection";
+import { SensitivitySection } from "@/components/projection/SensitivitySection";
 import { EditProjectDialog } from "@/components/dashboard/EditProjectDialog";
 
 // Novos Componentes da Sprint 3
@@ -243,6 +245,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
         <TabsContent value="results" className="mt-6 animate-in fade-in-50">
           <FinancialStatement />
+          <ViabilitySection />
+          <SensitivitySection />
         </TabsContent>
       </Tabs>
 
