@@ -48,13 +48,15 @@ export default async function PendentesPage() {
     .order('due_date', { ascending: true, nullsFirst: false })
 
   const rawTasks = allPending || []
-  const normalizedTasks = rawTasks.map((t: { providers?: { name?: string }[] | { name?: string } | null }) => {
-    const p = t.providers as { name?: string }[] | { name?: string } | null
-    const providerObj = Array.isArray(p) ? p[0] : p
-    return { ...t, providers: providerObj ?? null }
-  })
+  const normalizedTasks = rawTasks.map(
+    (t: { id: string; title: string; due_date?: string | null; requestor?: string; provider_id?: string; providers?: { name?: string }[] | { name?: string } | null }) => {
+      const p = t.providers as { name?: string }[] | { name?: string } | null | undefined
+      const providerObj = Array.isArray(p) ? p[0] : p
+      return { ...t, providers: providerObj ?? null }
+    }
+  )
 
-  const visible = normalizedTasks.filter((t: { provider_id?: string; requestor?: string }) => {
+  const visible = normalizedTasks.filter((t) => {
     if (isAdmin) return true
     if (myProvider && t.provider_id === myProvider.id) return true
     if (t.requestor === userName) return true
