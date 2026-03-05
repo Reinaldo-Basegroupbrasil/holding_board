@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { 
@@ -106,11 +107,8 @@ export function Sidebar() {
     <div className="space-y-4 py-4 flex flex-col h-full bg-slate-900 text-white border-r border-slate-800">
       <div className="px-3 py-2 flex-1">
         <Link href={role === 'partner' ? '/board/todo' : '/'} className="flex items-center pl-3 mb-14">
-          <div className="relative w-8 h-8 mr-4">
-            <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500 to-sky-500 rounded-lg opacity-75 animate-pulse" />
-            <div className="relative w-full h-full bg-black rounded-lg border border-slate-700 flex items-center justify-center font-bold text-lg">
-              H
-            </div>
+          <div className="relative w-8 h-8 mr-4 flex items-center justify-center">
+            <Image src="/logo-basegroup.png" alt="Base Group" width={32} height={32} className="object-contain" />
           </div>
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
             Holding Board

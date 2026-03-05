@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { createBrowserClient } from "@supabase/ssr"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -54,8 +55,8 @@ export default function LoginPage() {
 
       <Card className="w-full max-w-md border-slate-800 bg-slate-900/60 backdrop-blur-2xl text-white z-10 shadow-2xl">
         <CardHeader className="text-center pb-6">
-          <div className="mx-auto w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-xl shadow-indigo-500/10">
-            <span className="text-slate-900 font-black text-3xl">H</span>
+          <div className="mx-auto w-28 h-28 flex items-center justify-center mb-4">
+            <Image src="/logo-basegroup.png" alt="Base Group" width={112} height={112} className="object-contain" />
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight text-white">Holding Board</CardTitle>
           <CardDescription className="text-slate-400 font-medium">
