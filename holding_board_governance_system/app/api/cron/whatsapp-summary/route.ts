@@ -37,7 +37,13 @@ export async function GET(request: NextRequest) {
     .select('id, title, due_date, providers(name)')
     .in('status', ['pendente', 'em_andamento'])
 
-  const tasks = pendingTasks || []
+  const rawTasks = pendingTasks || []
+  // Supabase retorna providers como array na relação; normalizar para objeto
+  const tasks = rawTasks.map((t) => {
+    const providers = t.providers as { name?: string }[] | { name?: string } | null
+    const providerObj = Array.isArray(providers) ? providers[0] : providers
+    return { ...t, providers: providerObj ?? null }
+  })
 
   const res: { summary?: string; reminders?: number } = {}
 
