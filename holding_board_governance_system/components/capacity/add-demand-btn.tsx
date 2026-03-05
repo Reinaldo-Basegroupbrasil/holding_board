@@ -18,7 +18,8 @@ interface AddDemandBtnProps {
   providerName: string;
   isInternal: boolean;
   companies: any[];
-  onSuccess?: (newTask: any) => void; 
+  onSuccess?: (newTask: any) => void;
+  userRole?: string;
 }
 
 export function AddDemandBtn({ 
@@ -26,7 +27,8 @@ export function AddDemandBtn({
   providerName, 
   isInternal, 
   companies, 
-  onSuccess 
+  onSuccess,
+  userRole 
 }: AddDemandBtnProps) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -69,23 +71,18 @@ export function AddDemandBtn({
   const handleCreateTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
-    
-    // CORREÇÃO CRÍTICA:
-    // O ID que vem do Select é de uma EMPRESA (table companies).
-    // Não podemos salvar esse ID no campo 'project_id' (table projects), pois vai dar erro de chave estrangeira.
-    // Para tarefas avulsas, o project_id DEVE ser null.
+    const rawCompanyId = formData.get('company_id') as string | null
+    const projectName = (formData.get('project_name') as string || '').trim()
+    const companyId = rawCompanyId && rawCompanyId !== '_none' ? rawCompanyId : null
     
     const payload = {
         title: formData.get('name') as string, 
         description: formData.get('milestone') as string, 
-        
-        // FORÇA NULL: Isso evita o erro "violates foreign key constraint tasks_project_id_fkey"
         project_id: null, 
-        
-        // Se quisermos salvar o nome da empresa, usamos company_name (se a tabela tiver essa coluna)
-        // ou ignoramos por enquanto para garantir que o cadastro funcione.
         provider_id: providerId,
         due_date: `${formData.get('month')} - ${formData.get('week') || 'W1'}`,
+        company_id: companyId,
+        project_name: projectName || null,
     }
 
     startTransition(async () => {
@@ -103,82 +100,97 @@ export function AddDemandBtn({
     })
   }
 
+  const showVincularProjeto = userRole && ['admin', 'manager'].includes(userRole)
+
+  const demandaAvulsaForm = (
+    <form onSubmit={handleCreateTask} className="space-y-5">
+      <div className="grid gap-1.5">
+        <Label className="text-[10px] font-bold uppercase text-slate-400">Nome da Demanda</Label>
+        <Input name="name" required placeholder="Ex: Revisar contrato, Desenvolver plataforma" className="h-10 border-slate-200" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-1.5">
+          <Label className="text-[10px] font-bold uppercase text-slate-400">Empresa (opcional)</Label>
+          <Select name="company_id" defaultValue="_none">
+            <SelectTrigger className="h-10 text-xs bg-white border-slate-200"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
+            <SelectContent className="bg-white">
+              <SelectItem value="_none">Nenhuma</SelectItem>
+              {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-1.5">
+          <Label className="text-[10px] font-bold uppercase text-slate-400">Projeto (opcional)</Label>
+          <Input name="project_name" placeholder="Ex: Plataforma X, Contrato Axia" className="h-10 border-slate-200" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-1.5">
+            <Label className="text-[10px] font-bold uppercase text-slate-400">Mês de Entrega</Label>
+            <Select name="month" required>
+                <SelectTrigger className="h-10 text-xs bg-white border-slate-200"><SelectValue placeholder="Mês" /></SelectTrigger>
+                <SelectContent className="bg-white">{meses.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+            </Select>
+        </div>
+        <div className="grid gap-1.5">
+          <Label className="text-[10px] font-bold uppercase text-slate-400">Semana</Label>
+          <Select name="week" defaultValue="W1">
+              <SelectTrigger className="h-10 text-xs bg-white border-slate-200"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-white">
+                  <SelectItem value="W1">W1</SelectItem>
+                  <SelectItem value="W2">W2</SelectItem>
+                  <SelectItem value="W3">W3</SelectItem>
+                  <SelectItem value="W4">W4</SelectItem>
+              </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label className="text-[10px] font-bold uppercase text-slate-400">Entregável / Descrição</Label>
+        <Input name="milestone" required placeholder="Ex: Relatório, PDF, Protótipo" className="h-10 border-slate-200" />
+      </div>
+
+      <DialogFooter>
+        <Button type="submit" disabled={isPending} className="w-full bg-slate-900 h-11 text-white font-bold hover:bg-slate-800 transition-colors">
+            {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Criar Demanda"}
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(v) fetchAvailableMilestones(); }}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(v && showVincularProjeto) fetchAvailableMilestones(); }}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="w-full gap-2 border-dashed h-9 hover:bg-slate-50 text-slate-600">
-            <PlusCircle className="w-4 h-4" /> Alocar / Reservar Slot
+            <PlusCircle className="w-4 h-4" /> Nova Demanda
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px] bg-white rounded-xl shadow-2xl p-6">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-slate-800">Gerenciar Ocupação: {providerName}</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-slate-800">Nova Demanda: {providerName}</DialogTitle>
         </DialogHeader>
         
+        {showVincularProjeto ? (
         <Tabs defaultValue="task" className="w-full mt-4">
           <TabsList className="grid w-full grid-cols-2 mb-6 bg-slate-100 p-1">
-            <TabsTrigger value="task" className="text-xs font-bold uppercase tracking-wider">Operacional (SLA)</TabsTrigger>
-            <TabsTrigger value="roadmap" className="text-xs font-bold uppercase tracking-wider">Estratégico (Roadmap)</TabsTrigger>
+            <TabsTrigger value="task" className="text-xs font-bold uppercase tracking-wider">Demanda Avulsa</TabsTrigger>
+            <TabsTrigger value="roadmap" className="text-xs font-bold uppercase tracking-wider">Vincular Projeto</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="task">
-            <form onSubmit={handleCreateTask} className="space-y-5">
-              <div className="p-3 bg-slate-50 text-slate-600 text-[10px] rounded border border-slate-100 flex gap-2 items-center">
-                <Briefcase className="w-4 h-4 text-indigo-500" />
-                <p className="font-bold uppercase tracking-wider">Criação de demanda interna / avulsa</p>
-              </div>
-              
-              <div className="grid gap-1.5">
-                <Label className="text-[10px] font-bold uppercase text-slate-400">Nome da Tarefa</Label>
-                <Input name="name" required placeholder="Ex: Campanha de Performance" className="h-10 border-slate-200" />
-              </div>
-
-              {/* Removido o Select de Empresa para evitar confusão no banco de dados por enquanto, 
-                  já que tarefas avulsas não têm vínculo direto com a tabela projects */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-1.5">
-                    <Label className="text-[10px] font-bold uppercase text-slate-400">Mês de Entrega</Label>
-                    <Select name="month" required>
-                        <SelectTrigger className="h-10 text-xs bg-white border-slate-200"><SelectValue placeholder="Mês" /></SelectTrigger>
-                        <SelectContent className="bg-white">{meses.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
-                    </Select>
-                </div>
-                 <div className="grid gap-1.5">
-                      <Label className="text-[10px] font-bold uppercase text-slate-400">Semana (Slot)</Label>
-                      <Select name="week" defaultValue="W1">
-                          <SelectTrigger className="h-10 text-xs bg-white border-slate-200"><SelectValue /></SelectTrigger>
-                          <SelectContent className="bg-white">
-                              <SelectItem value="W1">W1 (Início)</SelectItem>
-                              <SelectItem value="W2">W2</SelectItem>
-                              <SelectItem value="W3">W3</SelectItem>
-                              <SelectItem value="W4">W4 (Fim)</SelectItem>
-                          </SelectContent>
-                      </Select>
-                  </div>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label className="text-[10px] font-bold uppercase text-slate-400">Entregável / Descrição</Label>
-                <Input name="milestone" required placeholder="Ex: Relatório / PDF" className="h-10 border-slate-200" />
-              </div>
-
-              <DialogFooter>
-                <Button type="submit" disabled={isPending} className="w-full bg-slate-900 h-11 text-white font-bold hover:bg-slate-800 transition-colors">
-                    {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Criar Demanda"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </TabsContent>
+          <TabsContent value="task">{demandaAvulsaForm}</TabsContent>
 
           <TabsContent value="roadmap">
             <form onSubmit={handleLinkRoadmap} className="space-y-5">
               <div className="p-3 bg-indigo-50 text-indigo-700 text-[10px] rounded border border-indigo-100 flex gap-2 items-center font-bold uppercase tracking-wider">
-                <Link2 className="w-4 h-4" /> Conectar Fase estratégica do Portfólio
+                <Link2 className="w-4 h-4" /> Vincular fase do Portfólio de Projetos
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-[10px] font-bold uppercase text-slate-400">Fases Aguardando Slot</Label>
+                <Label className="text-[10px] font-bold uppercase text-slate-400">Fases Disponíveis</Label>
                 <Select name="milestone_id" required>
-                    <SelectTrigger className="h-12 text-sm bg-white border-slate-200"><SelectValue placeholder="Escolha uma fase do roadmap..." /></SelectTrigger>
+                    <SelectTrigger className="h-12 text-sm bg-white border-slate-200"><SelectValue placeholder="Escolha uma fase do portfólio..." /></SelectTrigger>
                     <SelectContent className="bg-white max-h-[250px]">
                         {availableMilestones.length > 0 ? availableMilestones.map(m => (
                             <SelectItem key={m.id} value={m.id} className="text-xs py-3 border-b border-slate-50 last:border-0">
@@ -191,12 +203,15 @@ export function AddDemandBtn({
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={isPending} className="w-full bg-indigo-600 hover:bg-indigo-700 h-11 text-white font-bold shadow-lg shadow-indigo-100">
-                    {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Confirmar Vínculo Bilateral"}
+                    {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Vincular Projeto"}
                 </Button>
               </DialogFooter>
             </form>
           </TabsContent>
         </Tabs>
+        ) : (
+        <div className="mt-4">{demandaAvulsaForm}</div>
+        )}
       </DialogContent>
     </Dialog>
   )

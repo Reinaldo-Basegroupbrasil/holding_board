@@ -6,6 +6,15 @@ import { DashboardClient } from "@/components/dashboard/dashboard-client"
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
+function isOverdue(dateStr: string | null): boolean {
+  if (!dateStr) return false
+  const d = new Date(dateStr)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  d.setHours(0, 0, 0, 0)
+  return d < today
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   
@@ -16,76 +25,75 @@ export default async function DashboardPage() {
     .from('providers')
     .select('id, name, capacity_slots, type')
     .neq('type', 'HIDDEN')
-    .neq('type', 'EXECUTIVE')
     .order('type', { ascending: false })
 
   const { data: allProjects } = await supabase
     .from('projects')
     .select('id, name, provider_id, investment_realized, monthly_cost, status, custom_timeline, parent_project_id, companies(name)')
     
-  // Agora buscamos board_tasks para somar à carga de trabalho corretamente
   const { data: allTasks } = await supabase
     .from('board_tasks')
-    .select('id, title, provider_id, status')
+    .select('id, title, provider_id, status, due_date, providers(name)')
+
+  // Tarefas SLA (tabela tasks, geradas por reunioes/SLA)
+  const { data: slaTasks } = await supabase
+    .from('tasks')
+    .select('id, title, provider_id, status, due_date')
+    .neq('status', 'concluido')
+
+  // Ultima reuniao concluida
+  const { data: lastMeeting } = await supabase
+    .from('meetings')
+    .select('id, title, context, date, general_decisions, decisions, radar')
+    .eq('status', 'concluida')
+    .order('date', { ascending: false })
+    .limit(1)
+    .single()
 
   // --- FILTRAGEM ---
 
-  // A. Projetos Raiz (Financeiro)
   const rootProjects = allProjects?.filter(p => 
     p.parent_project_id === null &&
     !['completed', 'archived', 'concluido', 'cancelado'].includes(String(p.status).toLowerCase())
   ) || []
 
-  // B. Marcos/Fases (Radar)
   const milestones = allProjects?.filter(p => 
     p.parent_project_id !== null && 
     p.custom_timeline && 
     !['completed', 'archived', 'concluido'].includes(String(p.status).toLowerCase())
   ) || []
 
-  // C. Tarefas Ativas (Carga)
-  const activeTasks = allTasks?.filter(t => 
+  const activeBoardTasks = allTasks?.filter(t => 
     t.provider_id !== null && 
     (t.status === 'pendente' || t.status === 'em_andamento')
   ) || []
 
-  // --- CÁLCULOS KPIS ---
+  const activeSlaTasks = slaTasks || []
+
+  // --- KPIs ---
   const totalCapex = rootProjects.reduce((acc, p) => acc + (Number(p.investment_realized) || 0), 0)
   const totalMonthly = rootProjects.reduce((acc, p) => acc + (Number(p.monthly_cost) || 0), 0)
-  
   const activeProjectsCount = rootProjects.length
-  const activeTasksCount = activeTasks.length
 
-  // --- MAPA DE CARGA ---
-  const providerStats = providers?.map(provider => {
-    // Projetos do provider
-    const myProjects = allProjects?.filter(p => 
-        String(p.provider_id) === String(provider.id) && 
-        !['completed', 'archived', 'concluido', 'cancelado'].includes(String(p.status).toLowerCase())
-    ) || []
-    
-    // Tarefas do provider
-    const myTasks = activeTasks.filter(t => String(t.provider_id) === String(provider.id)) 
-    
-    const occupied = myProjects.length + myTasks.length 
-    
-    const totalSlots = provider.capacity_slots || 0
-    const isExternal = provider.type && provider.type.includes('EXTERNAL')
-    
-    const isOverloaded = !isExternal && totalSlots > 0 && occupied >= totalSlots
-    const free = isExternal ? 999 : Math.max(0, totalSlots - occupied)
+  const holdingActive = activeBoardTasks.length
+  const holdingOverdue = activeBoardTasks.filter(t => isOverdue(t.due_date)).length
+  const slaActive = activeSlaTasks.length
+  const slaOverdue = activeSlaTasks.filter(t => isOverdue(t.due_date)).length
 
-    const activeAllocations: any[] = []
-    
-    return { 
-      ...provider, 
-      occupied, 
-      free, 
-      isOverloaded, 
-      activeAllocations, 
-      isExternal 
-    }
-  }) || []
+  // --- PENDENCIAS POR RESPONSAVEL (Holding) ---
+  const holdingByProvider = providers?.map(p => ({
+    name: p.name,
+    type: p.type,
+    active: activeBoardTasks.filter(t => String(t.provider_id) === String(p.id)).length,
+    overdue: activeBoardTasks.filter(t => String(t.provider_id) === String(p.id) && isOverdue(t.due_date)).length,
+  })).filter(p => p.active > 0) || []
+
+  // --- SLA POR PARCEIRO ---
+  const slaByProvider = providers?.map(p => ({
+    name: p.name,
+    active: activeSlaTasks.filter(t => String(t.provider_id) === String(p.id)).length,
+    overdue: activeSlaTasks.filter(t => String(t.provider_id) === String(p.id) && isOverdue(t.due_date)).length,
+  })).filter(p => p.active > 0) || []
 
   // --- RADAR ANUAL ---
   const getQuarter = (month: string) => {
@@ -114,7 +122,7 @@ export default async function DashboardPage() {
             <Activity className="w-8 h-8 text-rose-600" />
             Visão Executiva (Cockpit)
           </h1>
-          <p className="text-slate-500 mt-1 text-sm font-medium">Consolidado financeiro e saúde operacional das Equipes.</p>
+          <p className="text-slate-500 mt-1 text-sm font-medium">Consolidado operacional e financeiro da Holding.</p>
         </div>
         <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-xs py-1 px-3 bg-white border-slate-200 text-slate-500">Exercício {currentYear}</Badge>
@@ -128,9 +136,11 @@ export default async function DashboardPage() {
       <DashboardClient 
         currentYear={currentYear}
         quarterStats={quarterStats}
-        providerStats={providerStats}
         nextDeliveries={nextDeliveries}
-        kpis={{ totalCapex, totalMonthly, activeProjectsCount, activeTasksCount }}
+        holdingByProvider={holdingByProvider}
+        slaByProvider={slaByProvider}
+        lastMeeting={lastMeeting}
+        kpis={{ totalCapex, totalMonthly, activeProjectsCount, holdingActive, holdingOverdue, slaActive, slaOverdue }}
       />
     </div>
   )

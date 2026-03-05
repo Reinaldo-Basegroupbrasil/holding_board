@@ -5,11 +5,13 @@ import { createBrowserClient } from "@supabase/ssr"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { 
   Plus, Play, Calendar as CalendarIcon, LayoutDashboard, FileText, Settings2,
-  Loader2, Check, Users, Briefcase, GripVertical, Trash2, ArrowLeft, UploadCloud, Download, Pencil, X
+  Loader2, Check, Users, Briefcase, GripVertical, Trash2, ArrowLeft, UploadCloud, Download, Pencil, X,
+  Radar, ArrowRight
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -26,16 +28,17 @@ function SortableItem(props: any) {
   const style = { transform: CSS.Transform.toString(transform), transition };
 
   return (
-    <div ref={setNodeRef} style={style} className="flex gap-2 group items-center mb-2 touch-none">
+    <div ref={setNodeRef} style={style} className="flex gap-2 group items-start mb-2 touch-none">
       <div {...attributes} {...listeners} className="cursor-grab text-slate-300 hover:text-slate-500 p-1">
         <GripVertical className="w-4 h-4" />
       </div>
-      <div className={`w-2 h-2 rounded-full shrink-0 ${props.color}`} />
-      <Input 
+      <div className={`w-2 h-2 rounded-full shrink-0 mt-2 ${props.color}`} />
+      <Textarea 
         value={props.text} 
         onChange={(e) => props.onChange(e.target.value)}
-        className={`h-auto py-1.5 text-sm border-transparent hover:border-slate-200 bg-transparent ${props.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+        className={`min-h-0 py-1.5 text-sm border-transparent hover:border-slate-200 bg-transparent shadow-none resize-none ${props.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
         placeholder="Assunto..."
+        rows={1}
       />
       <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-300 hover:text-emerald-600" onClick={props.onCheck}>
         {props.checked ? <Check className="w-4 h-4 text-emerald-500" /> : <div className="w-3 h-3 border border-slate-300 rounded-full" />}
@@ -144,22 +147,23 @@ export default function WarRoom() {
     return `Pauta: ${selectedContext}`
   }
 
-  useEffect(() => {
-    if (selectedContext) {
-      const fetchHistory = async () => {
-        setLoading(true)
-        const { data } = await supabase
-          .from('meetings')
-          .select('id, title, date, status, general_decisions')
-          .eq('context', selectedContext)
-          .order('date', { ascending: false })
-        
-        setMeetingHistory(data || [])
-        setLoading(false)
-      }
-      fetchHistory()
-    }
+  const fetchMeetingHistory = useCallback(async () => {
+    if (!selectedContext) return
+    setLoading(true)
+    const { data } = await supabase
+      .from('meetings')
+      .select('id, title, date, status, general_decisions')
+      .eq('context', selectedContext)
+      .order('date', { ascending: false })
+    setMeetingHistory(data || [])
+    setLoading(false)
   }, [selectedContext, supabase])
+
+  useEffect(() => {
+    if (selectedContext && viewMode === 'list') {
+      fetchMeetingHistory()
+    }
+  }, [selectedContext, viewMode, fetchMeetingHistory])
 
   useEffect(() => { loadInitialData() }, [loadInitialData])
 
@@ -179,6 +183,7 @@ export default function WarRoom() {
         existingMeeting.agenda_reinaldo = existingMeeting.agenda_reinaldo?.map((i:any) => ({...i, id: i.id || crypto.randomUUID()})) || []
         existingMeeting.agenda_armando = existingMeeting.agenda_armando?.map((i:any) => ({...i, id: i.id || crypto.randomUUID()})) || []
         existingMeeting.general_decisions = existingMeeting.general_decisions?.map((i:any) => ({...i, id: i.id || crypto.randomUUID()})) || []
+        existingMeeting.radar = existingMeeting.radar?.map((i:any) => ({...i, id: i.id || crypto.randomUUID()})) || []
         setCurrentMeeting(existingMeeting)
         setViewMode('meeting')
       } else {
@@ -203,6 +208,7 @@ export default function WarRoom() {
             agenda_armando: sanitize(lastMeeting?.agenda_armando),
             decisions: [],
             general_decisions: [],
+            radar: lastMeeting?.radar?.map((i: any) => ({ ...i, id: crypto.randomUUID() })) || [],
             status: 'agendada'
           })
           .select().single()
@@ -227,6 +233,7 @@ export default function WarRoom() {
       data.agenda_reinaldo = data.agenda_reinaldo?.map((i:any) => ({...i, id: i.id || crypto.randomUUID()})) || []
       data.agenda_armando = data.agenda_armando?.map((i:any) => ({...i, id: i.id || crypto.randomUUID()})) || []
       data.general_decisions = data.general_decisions?.map((i:any) => ({...i, id: i.id || crypto.randomUUID()})) || []
+      data.radar = data.radar?.map((i:any) => ({...i, id: i.id || crypto.randomUUID()})) || []
       setCurrentMeeting(data)
       setViewMode('meeting')
     }
@@ -257,7 +264,8 @@ export default function WarRoom() {
             title: item.text,
             provider_id: item.responsible_id, 
             created_by: user?.id,
-            status: 'pendente',
+            status: item.due_date ? 'em_andamento' : 'pendente',
+            due_date: item.due_date || null,
             is_personal: false
           })
           item.processed = true
@@ -269,7 +277,8 @@ export default function WarRoom() {
         decisions: decisions,
         agenda_reinaldo: currentMeeting.agenda_reinaldo,
         agenda_armando: currentMeeting.agenda_armando,
-        general_decisions: currentMeeting.general_decisions
+        general_decisions: currentMeeting.general_decisions,
+        radar: currentMeeting.radar
       }).eq('id', currentMeeting.id)
 
       alert("Reunião finalizada!")
@@ -311,7 +320,7 @@ export default function WarRoom() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
       {/* HEADER */}
       <div className="flex items-center justify-between bg-white p-4 rounded-xl border shadow-sm">
         <div className="flex items-center gap-4">
@@ -426,7 +435,7 @@ export default function WarRoom() {
                   <div>
                     <h3 className="font-bold text-slate-700">{meeting.title}</h3>
                     <p className="text-xs text-slate-500 flex items-center gap-2">
-                      <CalendarIcon className="w-3 h-3" /> {new Date(meeting.date).toLocaleDateString()} 
+                      <CalendarIcon className="w-3 h-3" /> {meeting.date ? meeting.date.split('-').reverse().join('/') : ''} 
                     </p>
                   </div>
                 </div>
@@ -444,7 +453,7 @@ export default function WarRoom() {
         <div className="grid grid-cols-12 gap-6 animate-in fade-in">
            
            {/* 1. MINHA PAUTA */}
-           <Card className="col-span-12 md:col-span-4 border-rose-100 shadow-sm h-fit">
+           <Card className="col-span-12 lg:col-span-6 border-rose-100 shadow-sm h-fit">
             <CardHeader className="bg-rose-50/50 border-b py-3"><CardTitle className="text-sm text-rose-700 font-bold uppercase">Minha Pauta</CardTitle></CardHeader>
             <CardContent className="p-4">
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'agenda_reinaldo')}>
@@ -478,7 +487,7 @@ export default function WarRoom() {
           </Card>
 
           {/* 2. PAUTA OUTROS */}
-          <Card className="col-span-12 md:col-span-4 border-blue-100 shadow-sm h-fit">
+          <Card className="col-span-12 lg:col-span-6 border-blue-100 shadow-sm h-fit">
             <CardHeader className="bg-blue-50/50 border-b py-3">
                 <CardTitle className="text-sm text-blue-700 font-bold uppercase">
                     {getSecondColumnTitle()}
@@ -515,25 +524,23 @@ export default function WarRoom() {
             </CardContent>
           </Card>
 
-          {/* 3. DECISÕES E TAREFAS */}
-          <div className="col-span-12 md:col-span-4 space-y-6">
-            
-            {/* DECISÕES GERAIS */}
-            <Card className="border-slate-200 shadow-sm">
+          {/* 3. DECISÕES GERAIS */}
+          <Card className="col-span-12 lg:col-span-4 border-slate-200 shadow-sm h-fit">
               <CardHeader className="bg-slate-50/50 border-b py-3"><CardTitle className="text-sm text-slate-700 font-bold uppercase flex gap-2"><FileText className="w-4 h-4" /> Decisões Gerais (Registros)</CardTitle></CardHeader>
               <CardContent className="p-4 space-y-2">
                 {currentMeeting.general_decisions?.map((item: any, idx: number) => (
-                   <div key={item.id || idx} className="flex gap-2 items-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
-                      <Input 
+                   <div key={item.id || idx} className="flex gap-2 items-start">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0 mt-2.5" />
+                      <Textarea 
                         value={item.text} 
                         onChange={(e) => {
                           const newList = [...(currentMeeting.general_decisions || [])]
                           newList[idx].text = e.target.value
                           updateMeetingData('general_decisions', newList)
                         }}
-                        className="h-auto py-1.5 text-xs bg-transparent border-transparent hover:border-slate-200"
+                        className="min-h-0 py-1.5 text-xs bg-transparent border-transparent hover:border-slate-200 shadow-none resize-none"
                         placeholder="Registre uma decisão..."
+                        rows={1}
                       />
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-300 hover:text-rose-500" onClick={() => {
                           const newList = currentMeeting.general_decisions.filter((_:any, i:number) => i !== idx)
@@ -550,35 +557,37 @@ export default function WarRoom() {
                   <Plus className="w-3 h-3 mr-1" /> Registrar Decisão
                 </Button>
               </CardContent>
-            </Card>
+          </Card>
 
-            {/* ENCAMINHAMENTOS */}
-            <Card className="border-emerald-100 shadow-sm">
+          {/* 4. ENCAMINHAMENTOS */}
+          <Card className="col-span-12 lg:col-span-4 border-emerald-100 shadow-sm h-fit">
               <CardHeader className="bg-emerald-50/50 border-b py-3"><CardTitle className="text-sm text-emerald-700 font-bold uppercase">Encaminhamentos (Gera Tarefa)</CardTitle></CardHeader>
               <CardContent className="p-4 space-y-4">
                 {currentMeeting.decisions?.map((decision: any, idx: number) => (
                   <div key={idx} className="p-3 border rounded-lg bg-white shadow-sm space-y-2 relative">
-                    <div className="flex gap-2 items-center">
-                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
+                    <div className="flex gap-2 items-start">
+                       <Button variant="ghost" size="icon" className="h-6 w-6 mt-0.5 shrink-0" onClick={() => {
                           const newDecs = [...currentMeeting.decisions]; 
                           newDecs[idx].done = !newDecs[idx].done;
                           updateMeetingData('decisions', newDecs);
                        }}>
                           {decision.done ? <Check className="w-4 h-4 text-emerald-500" /> : <div className="w-3 h-3 border rounded-full border-slate-300" />}
                        </Button>
-                       <Input 
+                       <Textarea 
                         value={decision.text} 
                         disabled={currentMeeting.status === 'concluida'}
                         onChange={(e) => {
                           const newDecs = [...currentMeeting.decisions]; newDecs[idx].text = e.target.value;
                           updateMeetingData('decisions', newDecs);
                         }}
-                        className={`h-8 text-xs font-bold border-none p-0 focus-visible:ring-0 ${decision.done ? 'line-through text-slate-400' : ''}`}
-                        placeholder="O que deve ser feito?" 
+                        className={`min-h-0 text-xs font-bold border-none p-0 focus-visible:ring-0 shadow-none resize-none ${decision.done ? 'line-through text-slate-400' : ''}`}
+                        placeholder="O que deve ser feito?"
+                        rows={1}
                       />
                     </div>
                     
                     {!decision.is_personal && (
+                      <div className="space-y-2">
                        <Select 
                         disabled={currentMeeting.status === 'concluida'}
                         value={decision.responsible_id || ""} 
@@ -596,6 +605,44 @@ export default function WarRoom() {
                            ))}
                          </SelectContent>
                        </Select>
+                       <div className="flex gap-1.5">
+                         <Select
+                           disabled={currentMeeting.status === 'concluida'}
+                           value={decision.due_date?.split(' - ')[0] || ""}
+                           onValueChange={(m) => {
+                             const newDecs = [...currentMeeting.decisions];
+                             const week = newDecs[idx].due_date?.split(' - ')[1] || 'W1';
+                             newDecs[idx].due_date = `${m} - ${week}`;
+                             updateMeetingData('decisions', newDecs);
+                           }}
+                         >
+                           <SelectTrigger className="h-7 text-[10px] flex-1 bg-slate-50 border-none"><SelectValue placeholder="Mês..." /></SelectTrigger>
+                           <SelectContent>
+                             {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map(m => (
+                               <SelectItem key={m} value={m}>{m}</SelectItem>
+                             ))}
+                           </SelectContent>
+                         </Select>
+                         <Select
+                           disabled={currentMeeting.status === 'concluida'}
+                           value={decision.due_date?.split(' - ')[1] || ""}
+                           onValueChange={(w) => {
+                             const newDecs = [...currentMeeting.decisions];
+                             const month = newDecs[idx].due_date?.split(' - ')[0] || '';
+                             newDecs[idx].due_date = month ? `${month} - ${w}` : w;
+                             updateMeetingData('decisions', newDecs);
+                           }}
+                         >
+                           <SelectTrigger className="h-7 text-[10px] w-[70px] bg-slate-50 border-none"><SelectValue placeholder="W..." /></SelectTrigger>
+                           <SelectContent>
+                             <SelectItem value="W1">W1</SelectItem>
+                             <SelectItem value="W2">W2</SelectItem>
+                             <SelectItem value="W3">W3</SelectItem>
+                             <SelectItem value="W4">W4</SelectItem>
+                           </SelectContent>
+                         </Select>
+                       </div>
+                      </div>
                     )}
                     {decision.processed && <div className="absolute top-2 right-2 text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">ENVIADO</div>}
                   </div>
@@ -607,8 +654,64 @@ export default function WarRoom() {
                   <Plus className="w-3 h-3 mr-2" /> Novo Encaminhamento
                 </Button>
               </CardContent>
-            </Card>
-          </div>
+          </Card>
+
+          {/* 5. RADAR */}
+          <Card className="col-span-12 lg:col-span-4 border-amber-200 shadow-sm h-fit">
+              <CardHeader className="bg-amber-50/50 border-b py-3">
+                <CardTitle className="text-sm text-amber-700 font-bold uppercase flex gap-2">
+                  <Radar className="w-4 h-4" /> Radar
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-2">
+                {(currentMeeting.radar || []).map((item: any, idx: number) => (
+                   <div key={item.id || idx} className="flex gap-2 items-start group">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-2.5" />
+                      <Textarea 
+                        value={item.text} 
+                        onChange={(e) => {
+                          const newList = [...(currentMeeting.radar || [])]
+                          newList[idx].text = e.target.value
+                          updateMeetingData('radar', newList)
+                        }}
+                        className="min-h-0 py-1.5 text-xs bg-transparent border-transparent hover:border-amber-200 shadow-none resize-none"
+                        placeholder="Assunto no radar..."
+                        rows={1}
+                      />
+                      <Button 
+                        variant="ghost" size="icon" 
+                        className="h-7 w-7 shrink-0 text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100" 
+                        title="Mover para Minha Pauta"
+                        onClick={() => {
+                          const radarItem = currentMeeting.radar[idx]
+                          const newRadar = currentMeeting.radar.filter((_:any, i:number) => i !== idx)
+                          const newAgenda = [...currentMeeting.agenda_reinaldo, { id: crypto.randomUUID(), text: radarItem.text, done: false }]
+                          setCurrentMeeting({ ...currentMeeting, radar: newRadar, agenda_reinaldo: newAgenda })
+                          supabase.from('meetings').update({ radar: newRadar, agenda_reinaldo: newAgenda }).eq('id', currentMeeting.id)
+                        }}
+                      >
+                        <ArrowRight className="w-3 h-3" />
+                      </Button>
+                      <Button 
+                        variant="ghost" size="icon" 
+                        className="h-7 w-7 shrink-0 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100" 
+                        onClick={() => {
+                          const newList = currentMeeting.radar.filter((_:any, i:number) => i !== idx)
+                          updateMeetingData('radar', newList)
+                        }}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                   </div>
+                ))}
+                <Button variant="ghost" className="w-full text-amber-600 text-xs font-bold mt-2 border-dashed border-amber-200" onClick={() => {
+                   const newList = [...(currentMeeting.radar || []), { id: crypto.randomUUID(), text: "" }]
+                   updateMeetingData('radar', newList)
+                }}>
+                  <Plus className="w-3 h-3 mr-1" /> Novo Item
+                </Button>
+              </CardContent>
+          </Card>
         </div>
       )}
     </div>

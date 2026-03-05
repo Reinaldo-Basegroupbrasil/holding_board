@@ -8,31 +8,32 @@ import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { 
-  CheckCircle2, AlertCircle, Calendar, Briefcase, 
+  CheckCircle2, Calendar, Briefcase, 
   Link as LinkIcon, ChevronDown, ChevronUp, UploadCloud, Loader2, Download, User, 
-  Plus, Trash2, CheckSquare, Send, FileText, PenTool, DollarSign, History, Edit2, Repeat, XCircle, Archive, RotateCcw, PenLine, Filter, CalendarDays, ExternalLink
+  Plus, Trash2, CheckSquare, Send, FileText, PenTool, DollarSign, History, Edit2, Repeat, XCircle, Archive, RotateCcw, PenLine, Inbox, CalendarDays, ExternalLink, Star, Building2, ListFilter
 } from "lucide-react"
 import { toast } from "sonner"
 import { completeBoardTask } from "@/app/actions/board-actions"
 // @ts-ignore
-import { addPersonalTaskAction, togglePersonalTaskAction, deletePersonalTaskAction, editPersonalTaskAction } from "@/app/actions/personal-tasks"
-import { EditTaskModal } from "./edit-task-modal" 
+import { addPersonalTaskAction, togglePersonalTaskAction, deletePersonalTaskAction, editPersonalTaskAction, toggleImportantAction } from "@/app/actions/personal-tasks"
+import { EditTaskModal } from "./edit-task-modal"
+import { NewBoardTaskBtn } from "./new-task-btn"
 
 // --- TIPOS CORRIGIDOS ---
 type PersonalTask = {
-    id: string // Agora é string para aceitar UUIDs do banco
+    id: string
     text: string
     context?: string 
     done: boolean
     doneAt?: string
     recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
-    targetDate?: string 
+    targetDate?: string
+    important?: boolean
 }
 
 export function AgendaClient({ tasks, initialPersonalTasks, userName, providerName, isAdmin, companies, providers, currentProviderId }: any) {
@@ -46,7 +47,8 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
   // ESTADOS PESSOAIS
   const [personalTasks, setPersonalTasks] = useState<PersonalTask[]>(initialPersonalTasks || [])
   const [newTaskText, setNewTaskText] = useState(""); const [newContext, setNewContext] = useState(""); const [newRecurrence, setNewRecurrence] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none'); const [newDate, setNewDate] = useState("")
-  const [selectedDateFilter, setSelectedDateFilter] = useState<Date | null>(new Date()); const [showOverdueOnly, setShowOverdueOnly] = useState(false); const datePickerRef = useRef<HTMLInputElement>(null); const [showHistory, setShowHistory] = useState(false)
+  const [showContextPicker, setShowContextPicker] = useState(false); const [showRecurrencePicker, setShowRecurrencePicker] = useState(false); const newDateInputRef = useRef<HTMLInputElement>(null); const formRef = useRef<HTMLFormElement>(null)
+  const [selectedDateFilter, setSelectedDateFilter] = useState<Date | null>(new Date()); const datePickerRef = useRef<HTMLInputElement>(null); const [showHistory, setShowHistory] = useState(false); const [showAllTasks, setShowAllTasks] = useState(false)
   
   // Edição Pessoal (IDs agora são strings)
   const [editingId, setEditingId] = useState<string | null>(null); 
@@ -56,6 +58,7 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
   const [historyFilter, setHistoryFilter] = useState("month")
 
   // ESTADOS HOLDING
+  const [holdingFilter, setHoldingFilter] = useState<string>('all')
   const [resolveModalOpen, setResolveModalOpen] = useState(false)
   const [refuseModalOpen, setRefuseModalOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -73,6 +76,18 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
       if (initialPersonalTasks) setPersonalTasks(initialPersonalTasks) 
   }, [initialPersonalTasks])
 
+  // Fecha dropdowns ao clicar fora do form
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (formRef.current && !formRef.current.contains(e.target as Node)) {
+        setShowContextPicker(false)
+        setShowRecurrencePicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   // --- FILTROS HOLDING ---
   const filteredHoldingTasks = tasks.filter((task: any) => {
       const isMyResponsibility = task.provider_id === currentProviderId
@@ -84,18 +99,11 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
       return viewMode === 'active' ? !isArchivedForMe : isArchivedForMe
   })
 
-  // --- KPI ---
-  const overdueHoldingCount = filteredHoldingTasks.filter((t: any) => t.due_date && isPast(parseISO(t.due_date)) && !isToday(parseISO(t.due_date)) && !['concluido','recusado'].includes(t.status)).length
-  const overduePersonalCount = personalTasks.filter(t => !t.done && t.targetDate && isPast(parseISO(t.targetDate)) && !isToday(parseISO(t.targetDate))).length
-  const totalOverdue = overdueHoldingCount + overduePersonalCount
+  const displayedHoldingTasks = holdingFilter === 'all' 
+    ? filteredHoldingTasks 
+    : filteredHoldingTasks.filter((t: any) => t.providers?.name === holdingFilter)
 
-  const handleOverdueClick = () => {
-    if (showOverdueOnly) { setShowOverdueOnly(false); return }
-    if (totalOverdue === 0) { toast.success("Tudo em dia!"); return }
-    setShowOverdueOnly(true)
-    if (overdueHoldingCount > 0) setActiveView('holding')
-    else setActiveView('personal')
-  }
+  const uniqueProviders = Array.from(new Set(filteredHoldingTasks.map((t: any) => t.providers?.name).filter(Boolean))) as string[]
 
   // --- AÇÕES HOLDING ---
   const handleArchiveToggle = async (task: any, shouldArchive: boolean) => {
@@ -144,14 +152,11 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
   const addPersonalTask = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTaskText.trim()) return
-    let dateToSave = newDate
-    if (!dateToSave && selectedDateFilter) {
-        dateToSave = format(selectedDateFilter, 'yyyy-MM-dd')
-    }
+    const dateToSave = newDate || ""
     const tempId = Math.random().toString()
     const newTask: PersonalTask = { id: tempId, text: newTaskText, context: (newContext && newContext !== 'no_context') ? newContext : undefined, done: false, recurrence: newRecurrence, targetDate: dateToSave || undefined }
     setPersonalTasks([newTask, ...personalTasks])
-    setNewTaskText(""); setNewRecurrence('none');
+    setNewTaskText(""); setNewRecurrence('none'); setNewContext(""); setNewDate(""); setShowContextPicker(false); setShowRecurrencePicker(false)
     
     await addPersonalTaskAction({ text: newTaskText, context: newContext, recurrence: newRecurrence, targetDate: dateToSave })
     toast.success("Salvo!")
@@ -186,6 +191,14 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
     }
   }
 
+  const toggleImportant = async (id: string) => {
+    const task = personalTasks.find(t => t.id === id)
+    if (!task) return
+    const newVal = !task.important
+    setPersonalTasks(personalTasks.map(t => t.id === id ? { ...t, important: newVal } : t))
+    await toggleImportantAction(id, task.important || false)
+  }
+
   const getFilteredHistory = () => {
     let doneTasks = personalTasks.filter(t => t.done && t.doneAt).sort((a,b) => new Date(b.doneAt!).getTime() - new Date(a.doneAt!).getTime())
     const now = new Date()
@@ -198,9 +211,9 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
 
   const getVisiblePersonalTasks = () => {
     let l = personalTasks.filter(t => !t.done)
-    if(showOverdueOnly) return l.filter(t => t.targetDate && isPast(parseISO(t.targetDate)) && !isToday(parseISO(t.targetDate)))
-    if(selectedDateFilter) return l.filter(t => !t.targetDate || isSameDay(parseISO(t.targetDate), selectedDateFilter))
-    return l.filter(t => !t.targetDate).sort((a,b) => (a.targetDate && !b.targetDate ? 1 : -1))
+    if(showAllTasks) return l
+    if(selectedDateFilter) return l.filter(t => t.targetDate && isSameDay(parseISO(t.targetDate), selectedDateFilter))
+    return l.filter(t => !t.targetDate)
   }
 
   const weekDays = Array.from({length:6},(_,i)=>addDays(new Date(),i))
@@ -215,25 +228,31 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
       </div>
 
       {/* KPI CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard label="Pendências Holding" value={filteredHoldingTasks.filter((t:any)=>!['concluido','recusado'].includes(t.status)).length} icon={Briefcase} bg="bg-indigo-600" color="text-white" isActive={activeView==='holding'} onClick={()=>{setActiveView('holding');setShowOverdueOnly(false)}} />
-          <StatCard label="Tarefas Pessoais" value={personalTasks.filter(t=>!t.done).length} icon={CheckSquare} bg="bg-emerald-50" color="text-emerald-600" isActive={activeView==='personal'} onClick={()=>{setActiveView('personal');setShowOverdueOnly(false)}} />
-          <div onClick={handleOverdueClick} className={`p-4 rounded-xl border flex items-center gap-4 cursor-pointer ${showOverdueOnly?'ring-2 ring-red-200 bg-red-50':'bg-white hover:border-red-200'}`}><div className={`p-3 rounded-lg ${showOverdueOnly?'bg-red-200 text-red-700':'bg-red-50 text-red-600'}`}><AlertCircle className="w-6 h-6"/></div><div><span className="text-2xl font-black text-slate-800">{totalOverdue}</span><p className="text-[10px] font-bold text-slate-400 uppercase">Atrasados</p></div></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <StatCard label="Pendências Holding" value={filteredHoldingTasks.filter((t:any)=>!['concluido','recusado'].includes(t.status)).length} icon={Briefcase} bg="bg-indigo-600" color="text-white" isActive={activeView==='holding'} onClick={()=>setActiveView('holding')} />
+          <StatCard label="Tarefas Pendentes" value={personalTasks.filter(t=>!t.done).length} icon={CheckSquare} bg="bg-emerald-50" color="text-emerald-600" isActive={activeView==='personal'} onClick={()=>setActiveView('personal')} />
       </div>
 
       {/* VIEW HOLDING */}
       {activeView === 'holding' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 min-h-[500px]">
-            <div className="flex justify-between items-center mb-6">
-                <Tabs defaultValue="all" className="w-auto"><TabsList><TabsTrigger value="all">Todas as Demandas</TabsTrigger></TabsList></Tabs>
-                <div className="flex gap-2">
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Button variant={holdingFilter==='all'?'secondary':'ghost'} size="sm" onClick={()=>setHoldingFilter('all')} className="text-xs">Todos ({filteredHoldingTasks.length})</Button>
+                    {uniqueProviders.map(name => {
+                        const count = filteredHoldingTasks.filter((t: any) => t.providers?.name === name).length
+                        return <Button key={name} variant={holdingFilter===name?'secondary':'ghost'} size="sm" onClick={()=>setHoldingFilter(name)} className="text-xs">{name} ({count})</Button>
+                    })}
+                </div>
+                <div className="flex gap-2 shrink-0">
                     <Button variant={viewMode==='active'?'secondary':'ghost'} size="sm" onClick={()=>setViewMode('active')}>Ativos</Button>
                     <Button variant={viewMode==='archived'?'secondary':'ghost'} size="sm" onClick={()=>setViewMode('archived')}>Arquivados</Button>
+                    <NewBoardTaskBtn providers={providers} currentUser={userName} />
                 </div>
             </div>
             <div className="space-y-3">
-                {filteredHoldingTasks.length === 0 && <div className="text-center py-12 text-slate-400">Nenhuma demanda encontrada neste filtro.</div>}
-                {filteredHoldingTasks.map((task: any) => (
+                {displayedHoldingTasks.length === 0 && <div className="text-center py-12 text-slate-400">Nenhuma demanda encontrada neste filtro.</div>}
+                {displayedHoldingTasks.map((task: any) => (
                     <HoldingTaskCard 
                         key={task.id} task={task} 
                         userName={userName} currentProviderId={currentProviderId} isAdmin={isAdmin}
@@ -252,68 +271,163 @@ export function AgendaClient({ tasks, initialPersonalTasks, userName, providerNa
 
       {/* VIEW PESSOAL */}
       {activeView === 'personal' && (
-          <div className={`bg-white rounded-2xl border shadow-sm p-6 min-h-[500px] relative ${showOverdueOnly ? 'border-red-200 ring-1 ring-red-100' : 'border-slate-200 border-t-4 border-t-emerald-500'}`}>
-                {showOverdueOnly && <div className="mb-4 p-2 bg-red-50 rounded text-xs text-red-600 font-bold text-center border border-red-100">Exibindo apenas Tarefas Pessoais Atrasadas</div>}
+          <div className="bg-white rounded-2xl border shadow-sm p-6 min-h-[300px] relative border-slate-200 border-t-4 border-t-emerald-500">
                 
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><CheckSquare className="w-5 h-5 text-emerald-600" /> Minha Pauta Pessoal</h2>
-                    <Button variant="ghost" size="sm" onClick={() => setShowHistory(!showHistory)} className="text-xs text-slate-500 hover:text-emerald-600">{showHistory ? "Voltar para Pendentes" : "Ver Histórico de Concluídos"} <History className="w-3.5 h-3.5 ml-2" /></Button>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><CheckSquare className="w-5 h-5 text-emerald-600" /> Minhas Tarefas</h2>
+                    <Button variant="ghost" size="sm" onClick={() => setShowHistory(!showHistory)} className="text-xs text-slate-500 hover:text-emerald-600"><History className="w-3.5 h-3.5 mr-1.5" /> {showHistory ? "Pendentes" : "Concluídos"}</Button>
                 </div>
 
                 {!showHistory && (
                     <>
-                        {/* CALENDÁRIO (RESTAURADO) */}
-                        {!showOverdueOnly && (
-                            <div className="flex gap-2 overflow-x-auto pb-4 mb-2 no-scrollbar">
-                                <button onClick={() => setSelectedDateFilter(null)} className={`flex flex-col items-center justify-center min-w-[70px] h-14 rounded-lg border transition-all ${selectedDateFilter === null ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}><span className="text-[10px] font-bold uppercase">Backlog</span><Filter className="w-4 h-4 mt-1" /></button>
-                                {weekDays.map((date) => {
-                                    const isSelected = selectedDateFilter && isSameDay(date, selectedDateFilter)
-                                    const isTodayDate = isToday(date)
+                        {/* CALENDÁRIO COM BADGES */}
+                            <p className="text-[10px] text-slate-400 mb-2">Todas = lista completa · Backlog = sem data definida</p>
+                            <div className="flex gap-2 overflow-x-auto pb-2 mb-2 no-scrollbar">
+                                {/* Todas - lista completa de pendentes */}
+                                {(() => {
+                                    const allCount = personalTasks.filter(t => !t.done).length
                                     return (
-                                        <button key={date.toString()} onClick={() => setSelectedDateFilter(date)} className={`flex flex-col items-center justify-center min-w-[70px] h-14 rounded-lg border transition-all relative ${isSelected ? 'bg-emerald-600 text-white border-emerald-600 shadow-md transform scale-105' : 'bg-white border-slate-200 text-slate-600 hover:bg-emerald-50'}`}>
+                                        <button title="Ver todas as tarefas pendentes (com ou sem data)" onClick={() => { setShowAllTasks(true); setSelectedDateFilter(null) }} className={`flex flex-col items-center justify-center min-w-[70px] h-[68px] rounded-lg border transition-all ${showAllTasks ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}>
+                                            <span className="text-[10px] font-bold uppercase">Todas</span>
+                                            <ListFilter className="w-4 h-4 mt-0.5" />
+                                            {allCount > 0 && <span className={`text-[9px] font-bold mt-0.5 ${showAllTasks ? 'text-indigo-200' : 'text-slate-400'}`}>({allCount})</span>}
+                                        </button>
+                                    )
+                                })()}
+                                {/* Backlog - tarefas sem data definida */}
+                                {(() => {
+                                    const backlogCount = personalTasks.filter(t => !t.done && !t.targetDate).length
+                                    return (
+                                        <button title="Tarefas sem data — para organizar e definir prazo depois" onClick={() => { setSelectedDateFilter(null); setShowAllTasks(false) }} className={`flex flex-col items-center justify-center min-w-[70px] h-[68px] rounded-lg border transition-all ${!showAllTasks && selectedDateFilter === null ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}>
+                                            <span className="text-[10px] font-bold uppercase">Backlog</span>
+                                            <Inbox className="w-4 h-4 mt-0.5" />
+                                            {backlogCount > 0 && <span className={`text-[9px] font-bold mt-0.5 ${!showAllTasks && selectedDateFilter === null ? 'text-slate-300' : 'text-slate-400'}`}>({backlogCount})</span>}
+                                        </button>
+                                    )
+                                })()}
+                                {weekDays.map((date) => {
+                                    const isSelected = !showAllTasks && selectedDateFilter && isSameDay(date, selectedDateFilter)
+                                    const isTodayDate = isToday(date)
+                                    const dayCount = personalTasks.filter(t => !t.done && t.targetDate && isSameDay(parseISO(t.targetDate), date)).length
+                                    return (
+                                        <button key={date.toString()} onClick={() => { setSelectedDateFilter(date); setShowAllTasks(false) }} className={`flex flex-col items-center justify-center min-w-[70px] h-[68px] rounded-lg border transition-all relative ${isSelected ? 'bg-emerald-600 text-white border-emerald-600 shadow-md transform scale-105' : 'bg-white border-slate-200 text-slate-600 hover:bg-emerald-50'}`}>
                                             {isTodayDate && !isSelected && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>}
                                             <span className="text-[10px] font-bold uppercase">{format(date, 'EEE', { locale: ptBR })}</span>
                                             <span className="text-lg font-bold leading-none">{format(date, 'dd')}</span>
+                                            {dayCount > 0 && <span className={`text-[9px] font-bold mt-0.5 ${isSelected ? 'text-emerald-200' : 'text-emerald-500'}`}>({dayCount})</span>}
                                         </button>
                                     )
                                 })}
-                                <div className="h-10 w-px bg-slate-200 mx-1"></div>
+                                <div className="h-10 w-px bg-slate-200 mx-1 self-center"></div>
                                 <div className="relative">
-                                    <button onClick={() => datePickerRef.current?.showPicker()} className="flex flex-col items-center justify-center min-w-[60px] h-14 rounded-xl border border-dashed border-slate-300 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"><CalendarDays className="w-5 h-5" /><span className="text-[9px] mt-1 font-medium">Outro</span></button>
-                                    <input type="date" ref={datePickerRef} className="absolute inset-0 opacity-0 cursor-pointer w-0 h-0" onChange={(e) => { if (e.target.value) setSelectedDateFilter(parseISO(e.target.value)) }} />
+                                    <button onClick={() => datePickerRef.current?.showPicker()} className="flex flex-col items-center justify-center min-w-[60px] h-[68px] rounded-xl border border-dashed border-slate-300 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"><CalendarDays className="w-5 h-5" /><span className="text-[9px] mt-1 font-medium">Mais</span></button>
+                                    <input type="date" ref={datePickerRef} className="absolute inset-0 opacity-0 cursor-pointer w-0 h-0" onChange={(e) => { if (e.target.value) { setSelectedDateFilter(parseISO(e.target.value)); setShowAllTasks(false) } }} />
                                 </div>
                             </div>
-                        )}
 
-                        {/* FORMULÁRIO COMPLETO (RESTAURADO COM A FUNÇÃO CORRETA) */}
-                        {!showOverdueOnly && (
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-inner mb-6">
-                                <form onSubmit={addPersonalTask} className="space-y-3">
-                                    <div className="flex gap-3"><Input placeholder={`Adicionar para ${selectedDateFilter ? format(selectedDateFilter, "dd/MM") : 'o Backlog'}...`} className="h-10 text-sm border-slate-200 bg-white focus:ring-2 focus:ring-emerald-500/20 rounded-lg px-4 flex-1 shadow-sm" value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} autoFocus /><Button type="submit" size="icon" className="h-10 w-10 bg-slate-900 hover:bg-slate-800 shrink-0 rounded-lg shadow-sm"><Plus className="w-5 h-5" /></Button></div>
-                                    <div className="flex flex-col sm:flex-row gap-3">
-                                        <div className="flex-1"><Select value={newContext} onValueChange={setNewContext}><SelectTrigger className="h-8 text-xs border-slate-200 bg-white text-slate-600 w-full"><SelectValue placeholder="Empresa / Contexto" /></SelectTrigger><SelectContent><SelectItem value="no_context">-- Nenhum --</SelectItem>{companies?.map((c: any) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}</SelectContent></Select></div>
-                                        <div className="w-full sm:w-[130px]"><Input type="date" className="h-8 text-xs border-slate-200 bg-white text-slate-600 px-2" value={newDate} onChange={(e) => setNewDate(e.target.value)} /></div>
-                                        <div className="w-full sm:w-[130px]"><Select value={newRecurrence} onValueChange={(v:any) => setNewRecurrence(v)}><SelectTrigger className="h-8 text-xs border-slate-200 bg-white text-slate-600 w-full"><SelectValue placeholder="Repetir?" /></SelectTrigger><SelectContent><SelectItem value="none">Não repetir</SelectItem><SelectItem value="daily">Todo Dia</SelectItem><SelectItem value="weekly">Semanal</SelectItem><SelectItem value="monthly">Mensal</SelectItem></SelectContent></Select></div>
+                        {/* FORMULÁRIO INLINE (ESTILO TO DO) */}
+                            <div className="mb-5">
+                                <form ref={formRef} onSubmit={addPersonalTask} className="flex items-center gap-2 border border-slate-200 rounded-xl bg-white px-3 py-2 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-300 transition-all">
+                                    <Input 
+                                        placeholder="Adicionar tarefa..." 
+                                        className="h-9 text-sm border-0 shadow-none focus-visible:ring-0 px-1 flex-1 placeholder:text-slate-400" 
+                                        value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} autoFocus 
+                                    />
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {/* Date picker icon */}
+                                        <div className="relative">
+                                            <button type="button" onClick={() => newDateInputRef.current?.showPicker()} className={`p-1.5 rounded-md transition-colors ${newDate ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`} title="Data">
+                                                <CalendarDays className="w-4 h-4" />
+                                            </button>
+                                            {newDate && <span className="absolute -top-1.5 -right-1 text-[8px] bg-emerald-100 text-emerald-700 rounded px-1 font-bold">{format(parseISO(newDate), 'dd/MM')}</span>}
+                                            <input type="date" ref={newDateInputRef} className="absolute inset-0 opacity-0 w-0 h-0" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                                        </div>
+
+                                        {/* Context picker */}
+                                        <div className="relative">
+                                            <button type="button" onClick={() => { setShowContextPicker(!showContextPicker); setShowRecurrencePicker(false) }} className={`p-1.5 rounded-md transition-colors ${newContext && newContext !== 'no_context' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`} title="Empresa / Contexto">
+                                                <Building2 className="w-4 h-4" />
+                                            </button>
+                                            {newContext && newContext !== 'no_context' && <span className="absolute -top-1.5 -right-1 text-[8px] bg-indigo-100 text-indigo-700 rounded px-1 font-bold truncate max-w-[50px]">{newContext.slice(0,4)}</span>}
+                                            {showContextPicker && (
+                                                <div className="absolute top-full right-0 mt-1 z-50 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[160px]">
+                                                    <button type="button" onClick={() => { setNewContext('no_context'); setShowContextPicker(false) }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-400">-- Nenhum --</button>
+                                                    {companies?.map((c: any) => (
+                                                        <button key={c.id} type="button" onClick={() => { setNewContext(c.name); setShowContextPicker(false) }} className={`w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 ${newContext === c.name ? 'text-indigo-600 font-medium bg-indigo-50/50' : 'text-slate-700'}`}>{c.name}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Recurrence picker */}
+                                        <div className="relative">
+                                            <button type="button" onClick={() => { setShowRecurrencePicker(!showRecurrencePicker); setShowContextPicker(false) }} className={`p-1.5 rounded-md transition-colors ${newRecurrence !== 'none' ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`} title="Recorrência">
+                                                <Repeat className="w-4 h-4" />
+                                            </button>
+                                            {showRecurrencePicker && (
+                                                <div className="absolute top-full right-0 mt-1 z-50 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[130px]">
+                                                    {([['none','Não repetir'],['daily','Todo Dia'],['weekly','Semanal'],['monthly','Mensal']] as const).map(([val, label]) => (
+                                                        <button key={val} type="button" onClick={() => { setNewRecurrence(val as any); setShowRecurrencePicker(false) }} className={`w-full text-left px-3 py-1.5 text-xs hover:bg-amber-50 ${newRecurrence === val ? 'text-amber-600 font-medium bg-amber-50/50' : 'text-slate-700'}`}>{label}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="w-px h-5 bg-slate-200 mx-0.5"></div>
+                                        <Button type="submit" size="icon" className="h-8 w-8 bg-emerald-600 hover:bg-emerald-700 shrink-0 rounded-lg"><Plus className="w-4 h-4" /></Button>
                                     </div>
                                 </form>
                             </div>
-                        )}
 
-                        <div className="space-y-3">
-                            {getVisiblePersonalTasks().length === 0 ? <div className="text-center py-16 text-slate-300"><p className="text-sm">{showOverdueOnly ? "Nenhum atraso pendente!" : "Nada agendado para este dia."}</p></div> : 
-                                getVisiblePersonalTasks().map(pt => (
+                        <div className="space-y-1">
+                            {(() => {
+                                const visible = getVisiblePersonalTasks()
+                                if (visible.length === 0) return <div className="text-center py-16 text-slate-300"><p className="text-sm">{showAllTasks ? "Nenhuma tarefa pendente." : selectedDateFilter === null ? "Nenhuma tarefa no backlog." : "Nenhuma tarefa para este dia."}</p></div>
+                                
+                                const importantTasks = visible.filter(t => t.important)
+                                const otherTasks = visible.filter(t => !t.important)
+                                const hasImportant = importantTasks.length > 0
+
+                                const renderTask = (pt: PersonalTask) => (
                                     <PersonalTaskCard 
                                         key={pt.id} task={pt} 
                                         onToggle={() => togglePersonalTask(pt.id)} 
                                         onDelete={() => handleDeleteClick(pt.id)}
                                         onEdit={startEditing}
+                                        onToggleImportant={toggleImportant}
                                         editingId={editingId} editState={editState} setEditState={setEditState}
                                         saveEdit={saveEdit} setEditingId={setEditingId}
                                         deleteConfirmId={deleteConfirmId}
                                         companies={companies}
                                     />
-                                ))
-                            }
+                                )
+
+                                return (
+                                    <>
+                                        {hasImportant && (
+                                            <div className="mb-2">
+                                                <div className="flex items-center gap-2 mb-1 px-1">
+                                                    <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                                                    <span className="text-xs uppercase text-amber-500 font-bold tracking-wider">Importantes</span>
+                                                    <span className="text-xs text-slate-300 font-medium">({importantTasks.length})</span>
+                                                </div>
+                                                <div className="space-y-0.5">{importantTasks.map(renderTask)}</div>
+                                            </div>
+                                        )}
+                                        {otherTasks.length > 0 && (
+                                            <div>
+                                                {hasImportant && (
+                                                    <div className="flex items-center gap-2 mb-1 px-1 mt-3">
+                                                        <span className="text-xs uppercase text-slate-400 font-bold tracking-wider">Tarefas</span>
+                                                        <span className="text-xs text-slate-300 font-medium">({otherTasks.length})</span>
+                                                    </div>
+                                                )}
+                                                <div className="space-y-0.5">{otherTasks.map(renderTask)}</div>
+                                            </div>
+                                        )}
+                                    </>
+                                )
+                            })()}
                         </div>
                     </>
                 )}
@@ -497,33 +611,47 @@ function HoldingTaskCard({ task, userName, currentProviderId, isAdmin, onResolve
     )
 }
 
-// 2. CARD PESSOAL (MANTIDO)
-function PersonalTaskCard({ task, onToggle, onDelete, onEdit, editingId, editState, setEditState, saveEdit, setEditingId, deleteConfirmId, companies }: any) {
-    return (
-        <div className="group flex flex-col p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition-all hover:border-indigo-200">
-            <div className="flex items-start gap-3">
-                <button onClick={onToggle} className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center ${task.done?'bg-emerald-500 border-emerald-500':'border-slate-300 hover:border-emerald-500'}`}>{task.done && <CheckCircle2 className="w-3.5 h-3.5 text-white"/>}</button>
-                <div className="flex-1">
-                    {editingId === task.id ? (
-                        <div className="space-y-2 p-2 bg-slate-50 rounded border border-indigo-100">
-                            <Input value={editState.text} onChange={(e) => setEditState({...editState, text: e.target.value})} className="h-8 text-sm bg-white" />
-                            <div className="flex gap-2">
-                                <Select value={editState.context || "no_context"} onValueChange={(v) => setEditState({...editState, context: v})}><SelectTrigger className="h-7 text-xs bg-white flex-1"><SelectValue placeholder="Contexto"/></SelectTrigger><SelectContent><SelectItem value="no_context">-- Nenhum --</SelectItem>{companies?.map((c:any)=><SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}</SelectContent></Select>
-                                <Input type="date" value={editState.date} onChange={(e) => setEditState({...editState, date: e.target.value})} className="h-7 text-xs bg-white w-28" />
-                            </div>
-                            <div className="flex justify-end gap-2 pt-1"><Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-6 text-[10px]">Cancelar</Button><Button size="sm" onClick={saveEdit} className="h-6 text-[10px] bg-indigo-600 text-white">Salvar</Button></div>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span onClick={() => onEdit(task)} className={`text-sm cursor-pointer hover:text-indigo-600 ${task.done?'text-slate-400 line-through':'text-slate-800 font-medium'}`}>{task.text}</span>
-                                {task.context && <Badge variant="outline" className="text-[9px] text-slate-500 font-normal px-1.5 py-0 h-4 border-slate-200 bg-slate-50">{task.context}</Badge>}
-                            </div>
-                            {(task.targetDate || task.recurrence !== 'none') && <div className="flex gap-3 mt-1">{task.targetDate && <span className="text-[10px] text-slate-400 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {format(parseISO(task.targetDate), 'dd/MM')}</span>}{task.recurrence!=='none' && <span className="text-[10px] text-indigo-400 flex items-center gap-1"><Repeat className="w-3 h-3"/> Repete</span>}</div>}
-                        </div>
-                    )}
+// 2. CARD PESSOAL (FLAT LIST STYLE)
+function PersonalTaskCard({ task, onToggle, onDelete, onEdit, onToggleImportant, editingId, editState, setEditState, saveEdit, setEditingId, deleteConfirmId, companies }: any) {
+    if (editingId === task.id) {
+        return (
+            <div className="py-2.5 px-3 border-b border-slate-100 bg-slate-50/50 rounded-lg">
+                <div className="space-y-2 p-2">
+                    <Input value={editState.text} onChange={(e) => setEditState({...editState, text: e.target.value})} className="h-8 text-sm bg-white" autoFocus />
+                    <div className="flex gap-2">
+                        <Select value={editState.context || "no_context"} onValueChange={(v) => setEditState({...editState, context: v})}><SelectTrigger className="h-7 text-xs bg-white flex-1"><SelectValue placeholder="Contexto"/></SelectTrigger><SelectContent><SelectItem value="no_context">-- Nenhum --</SelectItem>{companies?.map((c:any)=><SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}</SelectContent></Select>
+                        <Input type="date" value={editState.date} onChange={(e) => setEditState({...editState, date: e.target.value})} className="h-7 text-xs bg-white w-28" />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1"><Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-6 text-[10px]">Cancelar</Button><Button size="sm" onClick={saveEdit} className="h-6 text-[10px] bg-emerald-600 text-white">Salvar</Button></div>
                 </div>
-                {editingId !== task.id && <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => onEdit(task)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded"><Edit2 className="w-3.5 h-3.5" /></button><button onClick={onDelete} className={`p-1.5 rounded ${deleteConfirmId===task.id?'bg-red-100 text-red-600':'text-slate-400 hover:text-red-600'}`}>{deleteConfirmId===task.id?<span className="text-[10px]">Confirma?</span>:<Trash2 className="w-3.5 h-3.5"/>}</button></div>}
+            </div>
+        )
+    }
+
+    return (
+        <div className="group flex items-center gap-2.5 py-2.5 px-3 rounded-lg border-b border-slate-100 hover:bg-slate-50/70 transition-colors">
+            <button onClick={onToggle} className={`shrink-0 w-[18px] h-[18px] rounded-md border-2 flex items-center justify-center transition-colors ${task.done ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
+                {task.done && <CheckCircle2 className="w-3 h-3 text-white" />}
+            </button>
+
+            <button onClick={() => onToggleImportant(task.id)} className={`shrink-0 p-0.5 transition-colors ${task.important ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`} title="Marcar como importante">
+                <Star className={`w-4 h-4 ${task.important ? 'fill-amber-400' : ''}`} />
+            </button>
+
+            <span onClick={() => onEdit(task)} className={`flex-1 text-sm cursor-pointer line-clamp-2 ${task.done ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-800'} hover:text-emerald-700`}>{task.text}</span>
+
+            <div className="flex items-center gap-2 shrink-0">
+                {task.context && <Badge variant="outline" className="text-[9px] text-slate-500 font-normal px-1.5 py-0 h-4 border-slate-200 bg-slate-50">{task.context}</Badge>}
+                {task.targetDate && (() => {
+                    const date = parseISO(task.targetDate)
+                    const overdue = !task.done && isPast(date) && !isToday(date)
+                    return <span className={`text-[10px] flex items-center gap-1 ${overdue ? 'text-red-500 font-semibold' : 'text-slate-400'}`}><CalendarDays className={`w-3 h-3 ${overdue ? 'text-red-400' : ''}`} /> {format(date, 'dd/MM')}{overdue && <span className="text-[8px] bg-red-50 text-red-500 rounded px-1 border border-red-100">atrasada</span>}</span>
+                })()}
+                {task.recurrence !== 'none' && <Repeat className="w-3 h-3 text-indigo-400" />}
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => onEdit(task)} className="p-1 text-slate-400 hover:text-indigo-600 rounded"><Edit2 className="w-3.5 h-3.5" /></button>
+                    <button onClick={onDelete} className={`p-1 rounded ${deleteConfirmId === task.id ? 'bg-red-100 text-red-600' : 'text-slate-400 hover:text-red-600'}`}>{deleteConfirmId === task.id ? <span className="text-[10px] font-medium">Confirma?</span> : <Trash2 className="w-3.5 h-3.5" />}</button>
+                </div>
             </div>
         </div>
     )

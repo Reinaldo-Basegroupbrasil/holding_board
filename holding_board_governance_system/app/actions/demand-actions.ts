@@ -107,15 +107,20 @@ export async function createTaskAction(payload: any) {
         finalProjectId = payload.project_id;
     }
 
-    const insertData = { 
+    const companyId = payload.company_id && payload.company_id !== '_none' ? payload.company_id : null
+    const projectName = payload.project_name && String(payload.project_name).trim() ? String(payload.project_name).trim() : null
+
+    const insertData: Record<string, unknown> = { 
         title: payload.title,
         description: payload.description,
         provider_id: payload.provider_id,
         due_date: payload.due_date,
-        project_id: finalProjectId, // ID limpo ou null
+        project_id: finalProjectId,
         status: 'em_andamento', 
         origin: 'manual' 
     }
+    if (companyId) insertData.company_id = companyId
+    if (projectName) insertData.project_name = projectName
 
     const { error } = await supabase
       .from('tasks')
@@ -161,6 +166,38 @@ export async function linkRoadmapAction(projectId: string, providerId: string) {
 /**
  * ATUALIZAR TAREFA (Edição)
  */
+export async function logDeletionAction(payload: {
+  targetId: string
+  targetTitle: string
+  targetTable: string
+}) {
+  const supabase = await createClient()
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'Não autenticado' }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    await supabase.from('deletion_logs').insert({
+      user_email: user.email,
+      user_role: profile?.role || 'partner',
+      action: 'DELETE',
+      target_table: payload.targetTable,
+      target_id: payload.targetId,
+      target_title: payload.targetTitle,
+    })
+
+    return { success: true }
+  } catch (e: any) {
+    console.error("Erro ao registrar log:", e.message)
+    return { success: false, error: e.message }
+  }
+}
+
 export async function updateTaskAction(taskId: string, payload: any) {
   const supabase = await createClient()
   try {

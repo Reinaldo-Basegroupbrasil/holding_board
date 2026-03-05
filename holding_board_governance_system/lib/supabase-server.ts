@@ -16,18 +16,34 @@ export async function createClient() {
           try {
             cookieStore.set({ name, value, ...options })
           } catch (error) {
-            // O método `set` foi chamado de um Server Component.
-            // Isso pode ser ignorado.
           }
         },
         remove(name: string, options: any) {
           try {
             cookieStore.set({ name, value: '', ...options })
           } catch (error) {
-             // O método `delete` foi chamado de um Server Component.
           }
         },
       },
     }
   )
+}
+
+export async function getUserProfile() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, provider_id')
+    .eq('id', user.id)
+    .single()
+
+  return {
+    id: user.id,
+    email: user.email || '',
+    role: profile?.role || 'partner',
+    providerId: profile?.provider_id || null
+  }
 }

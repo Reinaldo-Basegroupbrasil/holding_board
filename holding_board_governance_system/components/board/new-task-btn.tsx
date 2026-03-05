@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Loader2, UploadCloud, Send } from "lucide-react"
 import { toast } from "sonner"
+import { sendTaskToWhatsApp } from "@/app/actions/whatsapp-actions"
 
 interface NewBoardTaskBtnProps {
   providers: { id: string; name: string }[]
@@ -81,16 +82,24 @@ export function NewBoardTaskBtn({ providers, currentUser }: NewBoardTaskBtnProps
         origin: 'board'
     }
 
-    const { error } = await supabase.from('board_tasks').insert(payload)
+    const { data: newTask, error } = await supabase
+      .from('board_tasks')
+      .insert(payload)
+      .select('id')
+      .single()
 
     setLoading(false)
-    if (!error) {
+    if (!error && newTask) {
         setOpen(false)
         setFileName("")
         toast.success("Tarefa delegada com sucesso!")
+        const waResult = await sendTaskToWhatsApp(newTask.id)
+        if (!waResult.success) {
+          toast.warning("Tarefa criada, mas envio para WhatsApp falhou: " + (waResult.error || ""))
+        }
         router.refresh()
     } else {
-        toast.error("Erro ao criar: " + error.message)
+        toast.error("Erro ao criar: " + (error?.message || "Erro desconhecido"))
     }
   }
 

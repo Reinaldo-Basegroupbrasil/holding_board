@@ -31,6 +31,7 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [downloadingZip, setDownloadingZip] = useState(false) 
+  const [exportCategory, setExportCategory] = useState<string>('all')
   const [docs, setDocs] = useState<any[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   
@@ -80,11 +81,26 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
     setSelectedFile(null) 
   }
 
-  const handleDownloadZip = async () => {
-    const validDocs = docs.filter(d => d.file_url && d.status !== 'MISSING')
+  const CATEGORY_LABELS: Record<string, string> = {
+    all: 'Completo (todos)',
+    ESTRATÉGICO: 'Institucional / Estratégico',
+    TAX: 'Contábil / Fiscal',
+    COMPLIANCE: 'Políticas / Compliance',
+    LEGAL: 'Societário / Legal',
+    LABOR: 'Trabalhista / Operacional',
+    TECH: 'Técnico / Operacional',
+  }
+
+  const handleDownloadZip = async (categoryFilter?: string) => {
+    let validDocs = docs.filter(d => d.file_url && d.status !== 'MISSING')
+    if (categoryFilter && categoryFilter !== 'all') {
+      validDocs = validDocs.filter(d => d.category === categoryFilter)
+    }
     
     if (validDocs.length === 0) {
-        alert("Não há arquivos anexados para baixar.")
+        alert(categoryFilter && categoryFilter !== 'all' 
+          ? `Não há arquivos anexados nesta categoria (${CATEGORY_LABELS[categoryFilter] || categoryFilter}).`
+          : "Não há arquivos anexados para baixar.")
         return
     }
 
@@ -92,7 +108,10 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
 
     try {
         const zip = new JSZip()
-        const folder = zip.folder(`Compliance_${company.name.replace(/\s+/g, '_')}`)
+        const folderName = categoryFilter && categoryFilter !== 'all'
+          ? `Compliance_${company.name.replace(/\s+/g, '_')}_${categoryFilter}`
+          : `Compliance_${company.name.replace(/\s+/g, '_')}`
+        const folder = zip.folder(folderName)
 
         const promises = validDocs.map(async (doc) => {
             try {
@@ -114,7 +133,8 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
 
         await Promise.all(promises)
         const content = await zip.generateAsync({ type: "blob" })
-        saveAs(content, `Dossie_${company.name}_${new Date().toISOString().split('T')[0]}.zip`)
+        const suffix = categoryFilter && categoryFilter !== 'all' ? `_${categoryFilter}` : ''
+        saveAs(content, `Dossie_${company.name.replace(/\s+/g, '_')}${suffix}_${new Date().toISOString().split('T')[0]}.zip`)
 
     } catch (error) {
         console.error("Erro ao gerar ZIP:", error)
@@ -315,23 +335,39 @@ export function RegulatoryModal({ company, onDataChange }: RegulatoryModalProps)
             Checklist: <span className="text-slate-500">{company.name}</span>
           </DialogTitle>
           
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleDownloadZip} 
-            disabled={downloadingZip || docs.filter(d => d.file_url).length === 0}
-            className="hidden sm:flex items-center gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
-          >
-            {downloadingZip ? (
-                <>
-                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> Compactando...
-                </>
-            ) : (
-                <>
-                    <Download className="w-4 h-4 text-emerald-600" /> Baixar Dossiê (ZIP)
-                </>
-            )}
-          </Button>
+          <div className="hidden sm:flex items-center gap-2">
+            <Select value={exportCategory} onValueChange={setExportCategory}>
+              <SelectTrigger className="w-[180px] h-9 text-xs border-slate-200">
+                <SelectValue placeholder="Escolher categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{CATEGORY_LABELS.all}</SelectItem>
+                <SelectItem value="ESTRATÉGICO">{CATEGORY_LABELS.ESTRATÉGICO}</SelectItem>
+                <SelectItem value="TAX">{CATEGORY_LABELS.TAX}</SelectItem>
+                <SelectItem value="COMPLIANCE">{CATEGORY_LABELS.COMPLIANCE}</SelectItem>
+                <SelectItem value="LEGAL">{CATEGORY_LABELS.LEGAL}</SelectItem>
+                <SelectItem value="LABOR">{CATEGORY_LABELS.LABOR}</SelectItem>
+                <SelectItem value="TECH">{CATEGORY_LABELS.TECH}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleDownloadZip(exportCategory)} 
+              disabled={downloadingZip || docs.filter(d => d.file_url).length === 0}
+              className="h-9 gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
+            >
+              {downloadingZip ? (
+                  <>
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> Compactando...
+                  </>
+              ) : (
+                  <>
+                      <Download className="w-4 h-4 text-emerald-600" /> Baixar (ZIP)
+                  </>
+              )}
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="py-4 space-y-6">

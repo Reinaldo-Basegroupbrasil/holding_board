@@ -16,7 +16,8 @@ export async function addPersonalTaskAction(data: any) {
     context: data.context === 'no_context' ? null : data.context,
     recurrence: data.recurrence,
     due_date: data.targetDate || null,
-    done: false
+    done: false,
+    important: false
   })
 
   if (error) return { error: error.message }
@@ -60,7 +61,8 @@ export async function togglePersonalTaskAction(id: string, currentStatus: boolea
           context: taskData.context,
           recurrence: taskData.recurrence,
           due_date: format(nextDate, 'yyyy-MM-dd'),
-          done: false
+          done: false,
+          important: taskData.important || false
       })
   }
 
@@ -80,11 +82,26 @@ export async function deletePersonalTaskAction(id: string) {
 // Editar
 export async function editPersonalTaskAction(id: string, updates: any) {
   const supabase = await createClient()
-  const { error } = await supabase.from('personal_tasks').update({
+  const payload: any = {
       title: updates.text,
       context: updates.context === 'no_context' ? null : updates.context,
       recurrence: updates.recurrence,
       due_date: updates.date || null
+  }
+  if (updates.important !== undefined) payload.important = updates.important
+
+  const { error } = await supabase.from('personal_tasks').update(payload).eq('id', id)
+
+  if (error) return { error: error.message }
+  revalidatePath('/board/todo')
+  return { success: true }
+}
+
+// Toggle Importancia
+export async function toggleImportantAction(id: string, currentStatus: boolean) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('personal_tasks').update({
+    important: !currentStatus
   }).eq('id', id)
 
   if (error) return { error: error.message }

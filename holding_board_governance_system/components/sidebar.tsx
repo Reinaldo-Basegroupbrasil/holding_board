@@ -24,7 +24,7 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   
-  const { isAdmin, userEmail, loading } = useAdmin() 
+  const { role, isAdmin, userEmail, loading } = useAdmin() 
 
   const handleLogout = async () => {
     const supabase = createBrowserClient(
@@ -42,70 +42,70 @@ export function Sidebar() {
       icon: LayoutDashboard,
       href: "/",
       color: "text-sky-500",
-      adminOnly: false,
+      allowedRoles: ["admin", "manager"],
     },
     {
       label: "Mapa Corporativo",
       icon: Network,
       href: "/structure",
       color: "text-violet-500",
-      adminOnly: false,
+      allowedRoles: ["admin", "manager", "partner"],
     },
     {
       label: "Sala de Reuniões",
       icon: Gavel,
       href: "/board/meetings",
       color: "text-amber-500",
-      adminOnly: false, 
+      allowedRoles: ["admin", "manager"],
     },
     {
       label: "Demandas & Tarefas",
       icon: ClipboardList,
       href: "/board/todo",
       color: "text-rose-500",
-      adminOnly: false,
+      allowedRoles: ["admin", "manager", "partner"],
     },
     {
-      label: "Propostas & Contratos", // NOVA SEÇÃO PARA GESTÃO FINANCEIRA
+      label: "Propostas & Contratos",
       icon: DollarSign,
       href: "/board/proposals",
       color: "text-blue-500",
-      adminOnly: false, 
+      allowedRoles: ["admin", "manager"],
     },
     {
       label: "Portfólio de Projetos",
       icon: Briefcase,
       href: "/portfolio",
       color: "text-pink-700",
-      adminOnly: false,
+      allowedRoles: ["admin", "manager"],
     },
     {
       label: "Monitoramento SLA",
       icon: Factory,
       href: "/capacity",
       color: "text-orange-700",
-      adminOnly: false,
+      allowedRoles: ["admin", "manager", "partner"],
     },
     {
       label: "Iniciativas",
       icon: FlaskConical,
       href: "/forge",
       color: "text-emerald-500",
-      adminOnly: true, 
+      allowedRoles: ["admin"],
     },
     {
       label: "Painel Admin",
       icon: Settings,
       href: "/admin",
-      color: "text-gray-400", 
-      adminOnly: true, 
+      color: "text-gray-400",
+      allowedRoles: ["admin"],
     },
   ]
 
   return (
     <div className="space-y-4 py-4 flex flex-col h-full bg-slate-900 text-white border-r border-slate-800">
       <div className="px-3 py-2 flex-1">
-        <Link href="/" className="flex items-center pl-3 mb-14">
+        <Link href={role === 'partner' ? '/board/todo' : '/'} className="flex items-center pl-3 mb-14">
           <div className="relative w-8 h-8 mr-4">
             <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500 to-sky-500 rounded-lg opacity-75 animate-pulse" />
             <div className="relative w-full h-full bg-black rounded-lg border border-slate-700 flex items-center justify-center font-bold text-lg">
@@ -119,8 +119,8 @@ export function Sidebar() {
         
         <div className="space-y-1">
           {routes.map((route) => {
-            if (loading && route.adminOnly) return null 
-            if (route.adminOnly && !isAdmin) return null 
+            if (loading) return null 
+            if (role && !route.allowedRoles.includes(role)) return null 
 
             return (
               <Link
@@ -152,8 +152,10 @@ export function Sidebar() {
                 <p className="text-xs text-zinc-300 truncate font-medium" title={userEmail}>
                     {userEmail}
                 </p>
-                <p className={`text-[9px] mt-0.5 font-bold uppercase ${isAdmin ? 'text-emerald-500' : 'text-blue-400'}`}>
-                    {isAdmin ? "Super Admin" : "Executive Board / Member"}
+                <p className={`text-[9px] mt-0.5 font-bold uppercase ${
+                    role === 'admin' ? 'text-emerald-500' : role === 'manager' ? 'text-blue-400' : 'text-amber-400'
+                }`}>
+                    {role === 'admin' ? "Super Admin" : role === 'manager' ? "Gestor" : "Parceiro"}
                 </p>
             </div>
           ) : null}

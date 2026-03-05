@@ -5,11 +5,19 @@ import { useAdmin } from "@/hooks/use-admin"
 export function AdminOnly({ children }: { children: React.ReactNode }) {
   const { isAdmin, loading } = useAdmin()
 
-  // Enquanto carrega ou se não for admin, não renderiza nada (null)
   if (loading || !isAdmin) {
     return null
   }
 
-  // Se for admin, renderiza o que estiver dentro
+  return <>{children}</>
+}
+
+export function RoleGate({ allowed, children }: { allowed: string[], children: React.ReactNode }) {
+  const { role, loading } = useAdmin()
+
+  if (loading || !role || !allowed.includes(role)) {
+    return null
+  }
+
   return <>{children}</>
 }

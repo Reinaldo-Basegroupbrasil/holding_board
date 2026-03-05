@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Settings, Trash2, Save, Loader2, Cpu, Briefcase } from "lucide-react"
+import { Settings, Trash2, Save, Loader2, Briefcase, Users } from "lucide-react"
 
 export function ProviderSettings({ provider }: { provider: any }) {
   const [open, setOpen] = useState(false)
@@ -20,22 +20,15 @@ export function ProviderSettings({ provider }: { provider: any }) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
-  // 1. ATUALIZAR DADOS (Nome, Tipo e Slots)
   const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     
     const formData = new FormData(e.currentTarget)
-    const type = formData.get('type')
-    
-    // Se for parceiro externo, sugerimos 999 se o usuário deixar vazio, mas respeitamos o input
-    const slotsInput = formData.get('slots')
-    const slots = slotsInput ? Number(slotsInput) : (type === 'EXTERNAL_PARTNER' ? 999 : 5)
 
     const updates = {
         name: formData.get('name'),
-        type: type,
-        capacity_slots: slots
+        type: formData.get('type'),
     }
     
     const { error } = await supabase
@@ -79,48 +72,32 @@ export function ProviderSettings({ provider }: { provider: any }) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[450px] bg-white dark:bg-slate-900">
         <DialogHeader>
-          <DialogTitle>Configurações de Capacidade</DialogTitle>
+          <DialogTitle>Configurações do Parceiro</DialogTitle>
           <DialogDescription>
-            Ajuste os slots disponíveis ou altere o tipo de alocação.
+            Edite os dados deste parceiro ou prestador.
           </DialogDescription>
         </DialogHeader>
         
         <form onSubmit={handleUpdate} className="grid gap-5 py-4">
           
           <div className="grid gap-2">
-            <Label className="font-bold text-slate-700">Nome da Entidade</Label>
+            <Label className="font-bold text-slate-700">Nome</Label>
             <Input name="name" defaultValue={provider.name} required className="font-medium" />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-                <Label className="font-bold text-slate-700">Tipo</Label>
-                <Select name="type" defaultValue={provider.type || "INTERNAL_SQUAD"}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="INTERNAL_SQUAD">
-                            <div className="flex items-center gap-2"><Cpu className="w-3 h-3" /> Engine Interna</div>
-                        </SelectItem>
-                        <SelectItem value="EXTERNAL_PARTNER">
-                            <div className="flex items-center gap-2"><Briefcase className="w-3 h-3" /> Parceiro Externo</div>
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-
-            <div className="grid gap-2">
-                <Label className="font-bold text-slate-700 flex justify-between">
-                    Slots (Capacidade)
-                </Label>
-                <Input 
-                    name="slots" 
-                    type="number" 
-                    defaultValue={provider.capacity_slots || 5} 
-                    min={1} 
-                    required
-                    className="font-mono font-bold"
-                />
-            </div>
+          <div className="grid gap-2">
+            <Label className="font-bold text-slate-700">Tipo</Label>
+            <Select name="type" defaultValue={provider.type || "EXTERNAL_PARTNER"}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="INTERNAL_SQUAD">
+                        <div className="flex items-center gap-2"><Users className="w-3 h-3" /> Squad Interno</div>
+                    </SelectItem>
+                    <SelectItem value="EXTERNAL_PARTNER">
+                        <div className="flex items-center gap-2"><Briefcase className="w-3 h-3" /> Parceiro</div>
+                    </SelectItem>
+                </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter className="flex justify-between sm:justify-between gap-2 border-t pt-4 mt-2">

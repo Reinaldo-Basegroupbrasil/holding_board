@@ -1,6 +1,17 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const ROUTE_PERMISSIONS: Record<string, string[]> = {
+  '/': ['admin', 'manager'],
+  '/board/meetings': ['admin', 'manager'],
+  '/board/proposals': ['admin', 'manager'],
+  '/portfolio': ['admin', 'manager'],
+  '/forge': ['admin'],
+  '/admin': ['admin'],
+}
+
+const PARTNER_HOME = '/board/todo'
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -54,21 +65,41 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Atualiza a sessão (Isso garante que o usuário continue logado)
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    const pathname = request.nextUrl.pathname
+    if (pathname !== '/login') {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+    return response
+  }
+
+  const pathname = request.nextUrl.pathname
+  if (pathname === '/login') {
+    return response
+  }
+
+  const allowedRoles = ROUTE_PERMISSIONS[pathname]
+  if (allowedRoles) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    const userRole = profile?.role || 'partner'
+
+    if (!allowedRoles.includes(userRole)) {
+      return NextResponse.redirect(new URL(PARTNER_HOME, request.url))
+    }
+  }
 
   return response
 }
 
 export const config = {
   matcher: [
-    /*
-     * Aplica a todas as rotas exceto:
-     * - _next/static (arquivos estáticos)
-     * - _next/image (otimização de imagens)
-     * - favicon.ico (ícone)
-     * - imagens (svg, png, jpg, etc)
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

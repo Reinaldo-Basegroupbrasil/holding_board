@@ -17,12 +17,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { updateTaskAction, deleteTaskAction, completeTaskAction } from "@/app/actions/demand-actions"
+import { updateTaskAction, deleteTaskAction, completeTaskAction, logDeletionAction } from "@/app/actions/demand-actions"
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 const WEEKS = ["W1", "W2", "W3", "W4"]
 
-export function DemandActions({ project, onOptimisticAction }: { project: any, onOptimisticAction?: (id: string, type: 'delete' | 'complete') => void }) {
+export function DemandActions({ project, onOptimisticAction, userRole }: { project: any, onOptimisticAction?: (id: string, type: 'delete' | 'complete') => void, userRole?: string }) {
   const [isPending, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
   const router = useRouter()
@@ -83,12 +83,18 @@ export function DemandActions({ project, onOptimisticAction }: { project: any, o
   const handleDelete = async () => {
     if(!confirm("Deseja excluir permanentemente?")) return
     
-    // Sumir da tela na hora
     if (onOptimisticAction) onOptimisticAction(targetId, 'delete')
 
     startTransition(async () => {
       const res = await deleteTaskAction(targetId)
       if (res.success) {
+        if (userRole === 'partner') {
+          await logDeletionAction({
+            targetId,
+            targetTitle: project.name || project.title || '',
+            targetTable: 'tasks',
+          })
+        }
         toast.success("Removido com sucesso")
         router.refresh()
       } else {

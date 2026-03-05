@@ -3,12 +3,14 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Building2, Globe2, Network, Map, GitFork, UserCircle2, Search, Filter } from 'lucide-react'
+import { Building2, Globe2, Network, Map, GitFork, UserCircle2, Search, Filter, FileSpreadsheet } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 // Importando componentes filhos
 import { CompanyMap } from "@/components/structure/company-map"
@@ -31,7 +33,7 @@ export default function StructurePage() {
   const [companies, setCompanies] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("") 
   const [statusFilter, setStatusFilter] = useState("ALL") 
-  const { isAdmin } = useAdmin()
+  const { isAdmin, isPartner } = useAdmin()
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,6 +69,21 @@ export default function StructurePage() {
       return matchesSearch && matchesStatus;
     });
   }, [companies, searchTerm, statusFilter]);
+
+  const handleExportExcel = () => {
+    const rows = filteredCompanies.map(c => ({
+      Empresa: c.name || '',
+      Jurisdição: c.country || '',
+      Tipo: c.type || '',
+      Serviço: c.service_type || '',
+      Status: getStatusInfo(c.status).label,
+      Representante: c.legal_representative || '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Empresas')
+    XLSX.writeFile(wb, `Mapa_Corporativo_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
 
   return (
     <div className="p-8 space-y-8 bg-slate-50 min-h-screen text-slate-900">
@@ -135,9 +152,14 @@ export default function StructurePage() {
                 </TabsTrigger>
             </TabsList>
             
-            <Badge variant="outline" className="text-slate-400 font-bold border-slate-200">
-                {filteredCompanies.length} Entidades Encontradas
-            </Badge>
+            <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleExportExcel} className="h-9 text-xs font-bold border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 gap-2">
+                    <FileSpreadsheet className="w-4 h-4" /> Exportar Excel
+                </Button>
+                <Badge variant="outline" className="text-slate-400 font-bold border-slate-200">
+                    {filteredCompanies.length} Entidades Encontradas
+                </Badge>
+            </div>
         </div>
 
         <TabsContent value="map" className="mt-0">
@@ -219,7 +241,16 @@ export default function StructurePage() {
 
                             <TableCell className="text-center">
                                 <div className="flex justify-center">
-                                    {criticalCount > 0 ? (
+                                    {isPartner ? (
+                                        <Badge variant="outline" className={`text-[10px] ${
+                                            criticalCount > 0 ? 'text-red-600 border-red-200 bg-red-50' :
+                                            warningCount > 0 ? 'text-amber-600 border-amber-200 bg-amber-50' :
+                                            'text-emerald-600 border-emerald-200 bg-emerald-50'
+                                        }`}>
+                                            {criticalCount > 0 ? `${criticalCount} pendência(s)` :
+                                             warningCount > 0 ? `${warningCount} alerta(s)` : 'Regular'}
+                                        </Badge>
+                                    ) : criticalCount > 0 ? (
                                         <div className="relative group cursor-pointer">
                                             <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping opacity-75"></div>
                                             <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></div>

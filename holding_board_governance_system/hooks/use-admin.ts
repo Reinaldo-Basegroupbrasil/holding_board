@@ -3,6 +3,7 @@ import { createBrowserClient } from "@supabase/ssr"
 
 export function useAdmin() {
   const [role, setRole] = useState<string | null>(null)
+  const [providerId, setProviderId] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -13,20 +14,19 @@ export function useAdmin() {
 
   useEffect(() => {
     async function getProfile() {
-      // 1. Pega o usuário logado na sessão atual
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
         setUserEmail(user.email ?? null)
         
-        // 2. Busca o cargo (role) na tabela 'profiles' que você criou no Supabase
         const { data } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, provider_id')
           .eq('id', user.id)
           .single()
         
-        setRole(data?.role || 'user')
+        setRole(data?.role || 'partner')
+        setProviderId(data?.provider_id || null)
       }
       
       setLoading(false)
@@ -35,11 +35,12 @@ export function useAdmin() {
     getProfile()
   }, [supabase])
 
-  // O 'isManager' retorna true se for Manager OU Admin.
-  // Isso garante que você (Admin) continue tendo acesso a tudo o que o Armando faz.
   return {
+    role,
     isAdmin: role === 'admin',
     isManager: role === 'manager' || role === 'admin',
+    isPartner: role === 'partner',
+    providerId,
     userEmail,
     loading
   }
