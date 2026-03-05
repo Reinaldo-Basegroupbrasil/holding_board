@@ -47,7 +47,14 @@ export default async function PendentesPage() {
     .in('status', ['pendente', 'em_andamento'])
     .order('due_date', { ascending: true, nullsFirst: false })
 
-  const visible = (allPending || []).filter((t: { provider_id?: string; requestor?: string }) => {
+  const rawTasks = allPending || []
+  const normalizedTasks = rawTasks.map((t: { providers?: { name?: string }[] | { name?: string } | null }) => {
+    const p = t.providers as { name?: string }[] | { name?: string } | null
+    const providerObj = Array.isArray(p) ? p[0] : p
+    return { ...t, providers: providerObj ?? null }
+  })
+
+  const visible = normalizedTasks.filter((t: { provider_id?: string; requestor?: string }) => {
     if (isAdmin) return true
     if (myProvider && t.provider_id === myProvider.id) return true
     if (t.requestor === userName) return true
@@ -68,7 +75,7 @@ export default async function PendentesPage() {
           </div>
         ) : (
           <ul className="space-y-3">
-            {visible.map((task: { id: string; title: string; due_date?: string | null; requestor?: string; providers?: { name?: string } }) => (
+            {visible.map((task) => (
               <li
                 key={task.id}
                 className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3 shadow-sm"
