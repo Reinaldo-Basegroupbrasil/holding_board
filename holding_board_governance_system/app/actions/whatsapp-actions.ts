@@ -16,7 +16,15 @@ export async function sendTaskToWhatsApp(taskId: string): Promise<{ success: boo
       return { success: false, error: error?.message || 'Tarefa não encontrada' }
     }
 
-    const result = await sendTaskToGroup(task, (task.providers as { name?: string })?.name)
+    // Supabase retorna providers como array na relação; sendTaskToGroup espera objeto
+    const providers = task.providers as { name?: string }[] | { name?: string } | null
+    const providerObj = Array.isArray(providers) ? providers[0] : providers
+    const taskForWhatsApp = {
+      ...task,
+      providers: providerObj ?? null,
+    }
+
+    const result = await sendTaskToGroup(taskForWhatsApp, providerObj?.name)
 
     if (!result.ok) {
       return { success: false, error: result.error }
