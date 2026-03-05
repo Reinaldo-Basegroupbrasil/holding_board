@@ -20,7 +20,7 @@ async function evolutionFetch(
       apikey: EVOLUTION_API_KEY || '',
       ...options.headers,
     },
-    body: body ? JSON.stringify(body) : options.body,
+    body: body != null ? JSON.stringify(body) : undefined,
   })
   return res
 }
