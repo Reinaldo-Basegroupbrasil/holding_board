@@ -9,7 +9,7 @@ export function isWhatsAppConfigured(): boolean {
 
 async function evolutionFetch(
   path: string,
-  options: RequestInit & { body?: object } = {}
+  options: Omit<RequestInit, 'body'> & { body?: object } = {}
 ): Promise<Response> {
   const { body, ...rest } = options
   const url = `${EVOLUTION_API_URL?.replace(/\/$/, '')}${path}`
@@ -78,7 +78,7 @@ export async function sendTaskToGroup(
   }
 
   const body = {
-    number: WHATSAPP_GROUP_JID,
+    number: WHATSAPP_GROUP_JID!,
     title: `🔔 NOVA DEMANDA #${sid}`,
     description,
     footer: 'Responda usando os botões abaixo',
@@ -107,7 +107,7 @@ export async function sendText(text: string): Promise<{ ok: boolean; error?: str
   }
 
   const body = {
-    number: WHATSAPP_GROUP_JID,
+    number: WHATSAPP_GROUP_JID!,
     text,
   }
 
