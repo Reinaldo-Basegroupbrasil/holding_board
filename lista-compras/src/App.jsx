@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // Importação segura para funcionar local e na web
 import { createClient } from 'https://esm.sh/@supabase/supabase-js';
-import { ShoppingCart, Check, Trash2, Plus, X, Save, RefreshCw, Pencil, Store, Home, ListRestart, Search } from 'lucide-react';
+import { ShoppingCart, Check, Trash2, Plus, X, Save, RefreshCw, Pencil, Store, Home, ListRestart, Search, FileText } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
 const getEnv = (key) => { try { return import.meta.env[key]; } catch { return ''; } };
@@ -41,6 +41,11 @@ export default function App() {
   const [formData, setFormData] = useState({
     nome: '', marca: '', categoria: '', corredor: '', quantidade: 1, preco_unitario: '', estoque_em_casa: 0
   });
+
+  // Importar Nota Fiscal (CSV SEFAZ)
+  const [isImportNotaOpen, setIsImportNotaOpen] = useState(false);
+  const [itensNota, setItensNota] = useState([]);
+  const [importNotaSaving, setImportNotaSaving] = useState(false);
 
   // Salvar preferências
   useEffect(() => { localStorage.setItem('mercado_mode', shoppingMode); }, [shoppingMode]);
@@ -222,13 +227,68 @@ export default function App() {
     return [...new Set([...padrao, ...doBanco])].sort();
   }, [products]);
 
+  const handleCsvFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      const matches = [...text.matchAll(/"([^"]+)"/g)].map(m => m[1]);
+      const itensExtraidos = [];
+      for (let i = 0; i < matches.length; i += 2) {
+        const col1 = matches[i];
+        if (col1 && col1.includes('(Código')) {
+          const nome = col1.split('(Código')[0].trim();
+          const precoMatch = col1.match(/Vl\. Unit\.:\s*([\d,]+)/);
+          const preco = precoMatch ? parseFloat(precoMatch[1].replace(',', '.')) : 0;
+          if (!itensExtraidos.find(row => row.nome === nome)) {
+            itensExtraidos.push({ nome, preco, produtoVinculado: '' });
+          }
+        }
+      }
+      setItensNota(itensExtraidos);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const setNotaVinculo = (index, produtoVinculado) => {
+    setItensNota(prev => prev.map((row, idx) => (idx === index ? { ...row, produtoVinculado } : row)));
+  };
+
+  const closeImportNota = () => {
+    setIsImportNotaOpen(false);
+    setItensNota([]);
+  };
+
+  const handleFinalizarNota = async () => {
+    const toUpdate = itensNota.filter(item => item.produtoVinculado);
+    if (!supabase) {
+      alert('Supabase não configurado.');
+      return;
+    }
+    setImportNotaSaving(true);
+    try {
+      for (const item of toUpdate) {
+        await supabase.from('produtos').update({ preco_unitario: item.preco }).eq('id', item.produtoVinculado);
+      }
+      await fetchProducts();
+      setItensNota([]);
+      setIsImportNotaOpen(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setImportNotaSaving(false);
+    }
+  };
+
   return (
     <div className={`min-h-screen pb-24 font-sans text-slate-900 transition-colors duration-500 ${shoppingMode ? 'bg-slate-100' : 'bg-white'}`}>
       
       {/* HEADER */}
       <header className={`text-white p-4 sticky top-0 z-20 shadow-lg transition-colors duration-300 ${shoppingMode ? 'bg-blue-600' : 'bg-emerald-600'}`}>
         <div className="max-w-3xl mx-auto">
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
             <div className="flex items-center gap-2">
               {shoppingMode ? <ShoppingCart className="animate-bounce" /> : <Home />}
               <div>
@@ -236,10 +296,20 @@ export default function App() {
                 {shoppingMode && <span className="text-[10px] opacity-80">Pegos: R$ {totalCart.toFixed(2)}</span>}
               </div>
             </div>
-            <button onClick={() => setShoppingMode(!shoppingMode)} className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide flex items-center gap-2 transition">
-              {shoppingMode ? 'Voltar' : 'Mercado'}
-              {shoppingMode ? <Home size={14}/> : <Store size={14}/>}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsImportNotaOpen(true)}
+                className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide flex items-center gap-2 transition"
+              >
+                <FileText size={14} />
+                Importar Nota (CSV)
+              </button>
+              <button type="button" onClick={() => setShoppingMode(!shoppingMode)} className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide flex items-center gap-2 transition">
+                {shoppingMode ? 'Voltar' : 'Mercado'}
+                {shoppingMode ? <Home size={14}/> : <Store size={14}/>}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 items-end">
@@ -454,6 +524,62 @@ export default function App() {
               </div>
               <button type="submit" disabled={saving} className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl mt-4 flex justify-center items-center gap-2">{saving ? <RefreshCw className="animate-spin"/> : <Save/>} Salvar</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL IMPORTAR NOTA (CSV) */}
+      {isImportNotaOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl my-auto max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <FileText size={22} className="text-emerald-600" />
+                Importar Nota (CSV)
+              </h2>
+              <button type="button" onClick={closeImportNota} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 text-slate-500">
+                <X size={20} />
+              </button>
+            </div>
+            <label className="block text-sm mb-2 text-slate-600">Arquivo CSV (exportado SEFAZ)</label>
+            <input type="file" accept=".csv" onChange={handleCsvFile} className="w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-100 file:text-emerald-800 file:font-semibold" />
+
+            {itensNota.length > 0 && (
+              <div className="mt-6 space-y-3">
+                <p className="text-sm font-semibold text-slate-700">Vincule cada item à um produto</p>
+                <ul className="space-y-4 max-h-[40vh] overflow-y-auto pr-1">
+                  {itensNota.map((item, index) => (
+                    <li key={`${item.nome}-${index}`} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 border-b border-slate-100 pb-3 last:border-0">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-slate-800 text-sm leading-snug">{item.nome}</p>
+                        <p className="text-emerald-700 font-mono font-bold text-sm">
+                          R$ {item.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <select
+                        value={item.produtoVinculado}
+                        onChange={(e) => setNotaVinculo(index, e.target.value)}
+                        className="w-full sm:w-56 min-w-0 p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="">Selecione o produto…</option>
+                        {products.map(p => (
+                          <option key={p.id} value={p.id}>{p.nome}</option>
+                        ))}
+                      </select>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  disabled={importNotaSaving}
+                  onClick={handleFinalizarNota}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl mt-2 flex justify-center items-center gap-2"
+                >
+                  {importNotaSaving ? <RefreshCw className="animate-spin" size={20} /> : null}
+                  Atualizar Preços e Finalizar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
