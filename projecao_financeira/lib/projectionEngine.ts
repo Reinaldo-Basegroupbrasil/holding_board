@@ -1,4 +1,38 @@
-import { Assumption, MonthlyData, ProjectionSummary, ProjectionTotals } from '@/types';
+import { Assumption, AssumptionMonthOverride, GrowthSegment, MonthlyData, ProjectionSummary, ProjectionTotals } from '@/types';
+
+function applyOverride(
+  assumptionId: string,
+  monthIndex: number,
+  computedVal: number,
+  overrides?: AssumptionMonthOverride[] | null
+): number {
+  if (!overrides?.length) return computedVal;
+  const o = overrides.find(
+    (x) => x.assumption_id === assumptionId && x.month_index === monthIndex
+  );
+  if (!o) return computedVal;
+  if (o.action === 'paid' || o.action === 'exclude') return 0;
+  if (o.action === 'override' && o.override_value != null)
+    return Number(o.override_value);
+  return computedVal;
+}
+
+export function getValueFromSegments(
+  absoluteMonth: number,
+  segments: GrowthSegment[],
+  baseAmount: number
+): number {
+  if (!segments || segments.length === 0) return baseAmount;
+  const sorted = [...segments].sort((a, b) => a.start_month - b.start_month);
+  const seg = sorted.find(s => absoluteMonth >= s.start_month && absoluteMonth <= s.end_month);
+  if (!seg) return baseAmount;
+  if (seg.is_absolute) return seg.value;
+  const prevSeg = sorted.filter(s => s.end_month < seg.start_month).pop();
+  const prevValue = prevSeg
+    ? (prevSeg.is_absolute ? prevSeg.value : getValueFromSegments(prevSeg.end_month, segments, baseAmount))
+    : baseAmount;
+  return prevValue + seg.value;
+}
 
 export const calculateValue = (
   baseAmount: number, 
@@ -51,7 +85,13 @@ export interface TaxConfig {
   rate: number;
 }
 
-export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxConfig, monthsToProject: number = 36): ProjectionSummary => {
+export const calculateProjection = (
+  assumptions: Assumption[],
+  taxConfig?: TaxConfig,
+  monthsToProject: number = 36,
+  monthOverrides?: AssumptionMonthOverride[] | null,
+  startDate?: Date | string
+): ProjectionSummary => {
   const MONTHS_TO_PROJECT = monthsToProject;
   
   const finiteOrZero = (n: unknown): number => {
@@ -59,9 +99,20 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
     return Number.isFinite(num) ? num : 0;
   };
 
+  const baseDate = (() => {
+    if (!startDate) return new Date();
+    if (startDate instanceof Date) return startDate;
+    const parsed = new Date(startDate);
+    return isNaN(parsed.getTime()) ? new Date() : parsed;
+  })();
+  const baseMonthDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+
   const createMonthData = (index: number, val: number): MonthlyData => {
-    const today = new Date();
-    const targetDate = new Date(today.getFullYear(), today.getMonth() + index, 1);
+    const targetDate = new Date(
+      baseMonthDate.getFullYear(),
+      baseMonthDate.getMonth() + index,
+      1
+    );
     return {
       monthIndex: index,
       month: index + 1,
@@ -125,21 +176,23 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
         let val = 0;
         if (isActive) {
             const monthsActive = m - (startMonth - 1); 
-            val = calculateWithGrowthDelay(
-              finiteOrZero(item.amount),
-              monthsActive,
-              m + 1,
-              startMonth,
-              item.growth_start_month,
-              buildRates(item),
-              item.growth_type
-            );
+            val = item.growth_segments?.length
+              ? getValueFromSegments(m + 1, item.growth_segments, finiteOrZero(item.amount))
+              : calculateWithGrowthDelay(
+                  finiteOrZero(item.amount),
+                  monthsActive,
+                  m + 1,
+                  startMonth,
+                  item.growth_start_month,
+                  buildRates(item),
+                  item.growth_type
+                );
         }
         driverValues[item.id][m] = finiteOrZero(val);
     });
 
-    // A2. Drivers - base-to-base composition
-    assumptions.filter(a => a.category === 'base' && a.driver_id).forEach(item => {
+    // A2a. Drivers - add-to-parent (delta/total) - excludes 'single' (meu valor × base)
+    assumptions.filter(a => a.category === 'base' && a.driver_id && !a.driver_id_2 && a.driver_operation !== 'multiply' && a.driver_operation !== 'sum' && a.driver_operation !== 'single').forEach(item => {
         const parentId = item.driver_id!;
         if (!driverValues[parentId]) return;
 
@@ -149,6 +202,41 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
             driverValues[parentId][m] += childAccumulators[item.id];
         } else {
             driverValues[parentId][m] += childVal;
+        }
+    });
+
+    // A2b. Drivers - multiply/sum (set own value from two bases)
+    assumptions.filter(a => a.category === 'base' && a.driver_id && a.driver_id_2 && (a.driver_operation === 'multiply' || a.driver_operation === 'sum')).forEach(item => {
+        const d1 = driverValues[item.driver_id!]?.[m] ?? 0;
+        const d2 = driverValues[item.driver_id_2]?.[m] ?? 0;
+        const mult = item.format === 'percent' ? (finiteOrZero(item.amount) / 100) : (finiteOrZero(item.amount) || 1);
+        driverValues[item.id][m] = item.driver_operation === 'multiply' ? mult * d1 * d2 : mult * (d1 + d2);
+    });
+
+    // A2c. Drivers - single base multiply (meu valor × base, resultado nesta linha)
+    assumptions.filter(a => a.category === 'base' && a.driver_id && !a.driver_id_2 && a.driver_operation === 'single' && driverValues[a.driver_id]).forEach(item => {
+        const startMonth = item.start_month ?? 1;
+        const isActive = (m + 1) >= startMonth && (!item.end_month || (m + 1) <= item.end_month);
+        if (!isActive) return;
+
+        const monthsActive = m - (startMonth - 1);
+        const mult = item.growth_segments?.length
+          ? getValueFromSegments(m + 1, item.growth_segments, finiteOrZero(item.amount))
+          : calculateWithGrowthDelay(
+              finiteOrZero(item.amount),
+              monthsActive,
+              m + 1,
+              startMonth,
+              item.growth_start_month,
+              buildRates(item),
+              item.growth_type ?? 'percentage'
+            );
+        const d1 = driverValues[item.driver_id!][m] ?? 0;
+        if (item.driver_type === 'delta') {
+          const prev = m > 0 ? (driverValues[item.driver_id!][m - 1] ?? 0) : 0;
+          driverValues[item.id][m] = (item.format === 'percent' ? mult / 100 : mult) * (d1 - prev);
+        } else {
+          driverValues[item.id][m] = (item.format === 'percent' ? mult / 100 : mult) * d1;
         }
     });
 
@@ -162,19 +250,28 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
         if (!item.is_recurring && (m + 1) !== startMonth) return;
 
         const monthsActive = m - (startMonth - 1);
-        let val = calculateWithGrowthDelay(
-          finiteOrZero(item.amount),
-          monthsActive,
-          m + 1,
-          startMonth,
-          item.growth_start_month,
-          buildRates(item),
-          item.growth_type
-        );
+        let val = item.growth_segments?.length
+          ? getValueFromSegments(m + 1, item.growth_segments, finiteOrZero(item.amount))
+          : calculateWithGrowthDelay(
+              finiteOrZero(item.amount),
+              monthsActive,
+              m + 1,
+              startMonth,
+              item.growth_start_month,
+              buildRates(item),
+              item.growth_type
+            );
 
         if (item.driver_id && driverValues[item.driver_id]) {
             const multiplier = item.format === 'percent' ? val / 100 : val;
-            if (item.driver_type === 'delta') {
+            const op = item.driver_operation || 'single';
+            const d1 = driverValues[item.driver_id][m] || 0;
+            const d2 = item.driver_id_2 && driverValues[item.driver_id_2] ? (driverValues[item.driver_id_2][m] || 0) : 0;
+            if (op === 'multiply' && item.driver_id_2 && driverValues[item.driver_id_2]) {
+                val = multiplier * d1 * d2;
+            } else if (op === 'sum' && item.driver_id_2 && driverValues[item.driver_id_2]) {
+                val = multiplier * (d1 + d2);
+            } else if (item.driver_type === 'delta') {
                 const curr = driverValues[item.driver_id][m] || 0;
                 const prev = m > 0 ? (driverValues[item.driver_id][m - 1] || 0) : 0;
                 val = multiplier * (curr - prev);
@@ -182,6 +279,8 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
                 val = multiplier * (driverValues[item.driver_id][m] || 0);
             }
         }
+
+        val = applyOverride(item.id, m, val, monthOverrides);
 
         let targetKey = item.category;
         if (targetKey === 'cost_fixed' || targetKey === 'fixed_cost') targetKey = 'costs_fixed';
@@ -247,25 +346,36 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
           const originMonth = m - lag;
           const startMonth = item.start_month ?? 1;
 
+          if (startMonth === 0) return;
+
           if (originMonth >= 0) {
              const isActive = (originMonth + 1) >= startMonth && (!item.end_month || (originMonth + 1) <= item.end_month);
              const isSingleEvent = !item.is_recurring && (originMonth + 1) === startMonth;
              
              if ((item.is_recurring && isActive) || isSingleEvent) {
                  const monthsActive = originMonth - (startMonth - 1);
-                 let val = calculateWithGrowthDelay(
-                   finiteOrZero(item.amount),
-                   monthsActive,
-                   originMonth + 1,
-                   startMonth,
-                   item.growth_start_month,
-                   buildRates(item),
-                   item.growth_type
-                 );
+                 let val = item.growth_segments?.length
+                   ? getValueFromSegments(originMonth + 1, item.growth_segments, finiteOrZero(item.amount))
+                   : calculateWithGrowthDelay(
+                       finiteOrZero(item.amount),
+                       monthsActive,
+                       originMonth + 1,
+                       startMonth,
+                       item.growth_start_month,
+                       buildRates(item),
+                       item.growth_type
+                     );
                  
                  if (item.driver_id && driverValues[item.driver_id]) {
                      const multiplier = item.format === 'percent' ? val / 100 : val;
-                     if (item.driver_type === 'delta') {
+                     const op = item.driver_operation || 'single';
+                     const d1 = driverValues[item.driver_id][originMonth] || 0;
+                     const d2 = item.driver_id_2 && driverValues[item.driver_id_2] ? (driverValues[item.driver_id_2][originMonth] || 0) : 0;
+                     if (op === 'multiply' && item.driver_id_2 && driverValues[item.driver_id_2]) {
+                         val = multiplier * d1 * d2;
+                     } else if (op === 'sum' && item.driver_id_2 && driverValues[item.driver_id_2]) {
+                         val = multiplier * (d1 + d2);
+                     } else if (item.driver_type === 'delta') {
                          const curr = driverValues[item.driver_id][originMonth] || 0;
                          const prev = originMonth > 0 ? (driverValues[item.driver_id][originMonth - 1] || 0) : 0;
                          val = multiplier * (curr - prev);
@@ -273,6 +383,8 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
                          val = multiplier * (driverValues[item.driver_id][originMonth] || 0);
                      }
                  }
+
+                 val = applyOverride(item.id, originMonth, val, monthOverrides);
 
                  const isInput = ['revenue', 'financial_revenue', 'capital'].includes(item.category);
                  const isOutput = ['cost_variable', 'variable_cost', 'cost_fixed', 'fixed_cost', 'personnel', 'tax', 'investment', 'financial_expense', 'tax_profit'].includes(item.category);
@@ -296,22 +408,34 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
       const startMonth = a.start_month ?? 1;
 
       const data = Array(MONTHS_TO_PROJECT).fill(0).map((_, i) => {
-          const isActive = (i + 1) >= startMonth && (!a.end_month || (i + 1) <= a.end_month);
           let val = 0;
-          if ((a.is_recurring && isActive) || (!a.is_recurring && (i + 1) === startMonth)) {
-             const monthsActive = i - (startMonth - 1);
-             val = calculateWithGrowthDelay(
-               finiteOrZero(a.amount),
-               monthsActive,
-               i + 1,
-               startMonth,
-               a.growth_start_month,
-               buildRates(a),
-               a.growth_type
-             );
-             if (a.category !== 'base' && a.driver_id && driverValues[a.driver_id]) {
+          if (a.category === 'base' && driverValues[a.id]) {
+            val = driverValues[a.id][i] ?? 0;
+          } else {
+            const isActive = (i + 1) >= startMonth && (!a.end_month || (i + 1) <= a.end_month);
+            if ((a.is_recurring && isActive) || (!a.is_recurring && (i + 1) === startMonth)) {
+               const monthsActive = i - (startMonth - 1);
+               val = a.growth_segments?.length
+                 ? getValueFromSegments(i + 1, a.growth_segments, finiteOrZero(a.amount))
+                 : calculateWithGrowthDelay(
+                     finiteOrZero(a.amount),
+                     monthsActive,
+                     i + 1,
+                     startMonth,
+                     a.growth_start_month,
+                     buildRates(a),
+                     a.growth_type
+                   );
+               if (a.category !== 'base' && a.driver_id && driverValues[a.driver_id]) {
                  const multiplier = a.format === 'percent' ? val / 100 : val;
-                 if (a.driver_type === 'delta') {
+                 const op = a.driver_operation || 'single';
+                 const d1 = driverValues[a.driver_id][i] || 0;
+                 const d2 = a.driver_id_2 && driverValues[a.driver_id_2] ? (driverValues[a.driver_id_2][i] || 0) : 0;
+                 if (op === 'multiply' && a.driver_id_2 && driverValues[a.driver_id_2]) {
+                     val = multiplier * d1 * d2;
+                 } else if (op === 'sum' && a.driver_id_2 && driverValues[a.driver_id_2]) {
+                     val = multiplier * (d1 + d2);
+                 } else if (a.driver_type === 'delta') {
                      const curr = driverValues[a.driver_id][i] || 0;
                      const prev = i > 0 ? (driverValues[a.driver_id][i - 1] || 0) : 0;
                      val = multiplier * (curr - prev);
@@ -319,7 +443,9 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
                      val = multiplier * (driverValues[a.driver_id][i] || 0);
                  }
              }
+            }
           }
+          val = applyOverride(a.id, i, val, monthOverrides);
           return createMonthData(i, finiteOrZero(val));
       });
 
@@ -329,6 +455,7 @@ export const calculateProjection = (assumptions: Assumption[], taxConfig?: TaxCo
           category: a.category,
           format: a.format,
           driver_id: a.driver_id,
+          yearly_display: a.yearly_display,
           data: data,
           preOperationalValue: startMonth === 0 ? finiteOrZero(a.amount) : 0
       };

@@ -1,3 +1,10 @@
+export interface GrowthSegment {
+  start_month: number;
+  end_month: number;
+  value: number;
+  is_absolute: boolean;
+}
+
 export interface MonthlyData {
   monthIndex: number;
   month: number;
@@ -21,13 +28,27 @@ export interface Assumption {
   start_month?: number; 
   end_month?: number | null;
   driver_id?: string | null;
+  driver_id_2?: string | null;
   driver_type?: 'total' | 'delta';
+  driver_operation?: 'single' | 'multiply' | 'sum';
   is_recurring?: boolean;
   amortization_period?: number;
   payment_lag?: number;
   growth_type?: 'percentage' | 'linear';
   growth_start_month?: number | null;
+  growth_segments?: GrowthSegment[];
   format?: 'currency' | 'percent' | 'number';
+  source?: string | null;
+  yearly_display?: 'sum' | 'last_value';
+  created_at?: string;
+}
+
+export interface AssumptionMonthOverride {
+  id: string;
+  assumption_id: string;
+  month_index: number;
+  action: 'paid' | 'exclude' | 'override';
+  override_value?: number | null;
   created_at?: string;
 }
 
@@ -88,6 +109,7 @@ export interface ProjectionItemDetail {
   category: string;
   format?: 'currency' | 'percent' | 'number';
   driver_id?: string | null;
+  yearly_display?: 'sum' | 'last_value';
   data: MonthlyData[];
   preOperationalValue: number;
 }
@@ -103,6 +125,7 @@ export interface Project {
   name: string;
   description?: string;
   currency_main: string;
+  projection_start_date?: string; // ISO yyyy-mm-dd, sempre dia 1
   projection_months?: number;
   created_at: string;
   updated_at: string;

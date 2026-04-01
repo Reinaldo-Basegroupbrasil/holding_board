@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import { Edit, Trash2, Link as LinkIcon, Layers, ArrowUpRight } from "lucide-react";
+import { Edit, Trash2, Link as LinkIcon, Layers, ArrowUpRight, BookOpen } from "lucide-react";
 import { Assumption } from "@/types";
 import { useProjectStore } from "@/store/projectStore";
 import { Button } from "@/components/ui/button";
@@ -158,10 +158,30 @@ export function AssumptionList({ assumptions = [], onEdit, onDelete, typeFilter 
                                  </span>
 
                                  {driverName ? (
-                                   <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded w-fit">
-                                     <LinkIcon className="h-3 w-3" />
+                                   <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded w-fit" title={
+                                     item.driver_operation === 'multiply' && item.driver_id_2
+                                       ? `Fórmula: ${driverName} × ${getDriverName(item.driver_id_2)}`
+                                       : item.driver_operation === 'sum' && item.driver_id_2
+                                       ? `Fórmula: ${driverName} + ${getDriverName(item.driver_id_2)}`
+                                       : (item.category === 'base' && item.driver_operation !== 'single')
+                                       ? item.driver_type === 'delta'
+                                         ? `Incremento acumula em ${driverName}`
+                                         : `Valor soma em ${driverName} a cada mês`
+                                       : item.driver_type === 'delta'
+                                       ? `Seu valor × Novos do mês de ${driverName}`
+                                       : `Seu valor × Total de ${driverName}`
+                                   }>
+                                     <LinkIcon className="h-3 w-3 shrink-0" />
                                      <span>
-                                       x {item.driver_type === 'delta' ? 'Novos' : 'Total'} <strong>{driverName}</strong>
+                                       {item.driver_operation === 'multiply' && item.driver_id_2 ? (
+                                         <><strong>{driverName}</strong> × <strong>{getDriverName(item.driver_id_2)}</strong></>
+                                       ) : item.driver_operation === 'sum' && item.driver_id_2 ? (
+                                         <><strong>{driverName}</strong> + <strong>{getDriverName(item.driver_id_2)}</strong></>
+                                       ) : (item.category === 'base' && item.driver_operation !== 'single') ? (
+                                         <>{item.driver_type === 'delta' ? '→ acumula em' : '→ soma em'} <strong>{driverName}</strong></>
+                                       ) : (
+                                         <>{item.driver_type === 'delta' ? '× Novos de' : '× Total de'} <strong>{driverName}</strong></>
+                                       )}
                                      </span>
                                    </div>
                                  ) : null}
@@ -183,6 +203,12 @@ export function AssumptionList({ assumptions = [], onEdit, onDelete, typeFilter 
                                 <span>Início: {item.start_month === 0 ? 'Mês 0' : `Mês ${item.start_month}`}</span>
                                 {item.payment_lag ? (
                                     <span className="text-green-600">Recebimento: D+{item.payment_lag * 30}</span>
+                                ) : null}
+                                {item.source ? (
+                                    <span className="flex items-center gap-1 text-slate-600" title={item.source}>
+                                      <BookOpen className="h-3 w-3 shrink-0" />
+                                      <span className="truncate max-w-[180px]">{item.source}</span>
+                                    </span>
                                 ) : null}
                               </div>
                             </TableCell>

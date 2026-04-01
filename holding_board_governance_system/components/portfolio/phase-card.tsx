@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { createBrowserClient } from "@supabase/ssr"
 import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Flag, CheckCircle2, Trash2, Loader2, MapPin, Cpu } from "lucide-react"
+import { Flag, CheckCircle2, Trash2, Loader2, MapPin, Cpu, FileJson, ClipboardList } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
+import { createNotionTasksFromJsonAction, getPhaseNotionTasksAction } from "@/app/actions/notion-actions"
 
-// Adicionei a prop isLast
-export function PhaseCard({ phase, isLast }: { phase: any, isLast: boolean }) {
+export function PhaseCard({ phase, isLast, parentProjectNotionId }: { phase: any, isLast: boolean, parentProjectNotionId?: string }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -29,6 +30,42 @@ export function PhaseCard({ phase, isLast }: { phase: any, isLast: boolean }) {
   
   const [month, setMonth] = useState(defaultMonth)
   const [week, setWeek] = useState(defaultWeek)
+  const [tasksJson, setTasksJson] = useState("")
+  const [importLoading, setImportLoading] = useState(false)
+  const [notionTasks, setNotionTasks] = useState<{ id: string; title: string; status: string }[]>([])
+  const [tasksLoading, setTasksLoading] = useState(false)
+
+  const canImportTasks = !!phase.notion_page_id && !!parentProjectNotionId
+
+  useEffect(() => {
+    if (open && phase.notion_page_id) {
+      setTasksLoading(true)
+      getPhaseNotionTasksAction(phase.notion_page_id).then((tasks) => {
+        setNotionTasks(tasks)
+        setTasksLoading(false)
+      }).catch(() => setTasksLoading(false))
+    }
+  }, [open, phase.notion_page_id])
+
+  const handleImportTasks = async () => {
+    if (!canImportTasks) return
+    setImportLoading(true)
+    const result = await createNotionTasksFromJsonAction(
+      parentProjectNotionId!,
+      phase.notion_page_id,
+      tasksJson
+    )
+    setImportLoading(false)
+    if (result.success) {
+      toast.success(`${result.count} tarefa(s) criada(s) no Notion.`)
+      setTasksJson("")
+      const tasks = await getPhaseNotionTasksAction(phase.notion_page_id)
+      setNotionTasks(tasks)
+      router.refresh()
+    } else {
+      toast.error(result.error || "Erro ao importar tarefas.")
+    }
+  }
 
   const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
   const semanas = ["W1 (Início)", "W2", "W3", "W4 (Fim)"]
@@ -173,6 +210,54 @@ export function PhaseCard({ phase, isLast }: { phase: any, isLast: boolean }) {
                     </Select>
                 </div>
             </div>
+
+            {canImportTasks && (
+              <div className="space-y-2 border-t border-slate-100 pt-4">
+                <Label className="flex items-center gap-2 text-xs font-bold text-indigo-700">
+                  <FileJson className="w-3.5 h-3.5" /> Importar tarefas (JSON do Gemini)
+                </Label>
+                <textarea
+                  value={tasksJson}
+                  onChange={(e) => setTasksJson(e.target.value)}
+                  placeholder='[{"tarefa":"...", "epico":"Geral"}, {"tarefa":"...", "checklist":["Item 1"]}]'
+                  className="flex min-h-[80px] w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleImportTasks}
+                  disabled={importLoading || !tasksJson.trim()}
+                  className="w-full border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                >
+                  {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cadastrar no Notion"}
+                </Button>
+              </div>
+            )}
+
+            {phase.notion_page_id && (
+              <div className="space-y-2 border-t border-slate-100 pt-4">
+                <Label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                  <ClipboardList className="w-3.5 h-3.5" /> Tarefas na fase (Notion)
+                </Label>
+                {tasksLoading ? (
+                  <div className="flex items-center gap-2 py-2 text-slate-500 text-xs">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando...
+                  </div>
+                ) : notionTasks.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-2">Nenhuma tarefa vinculada.</p>
+                ) : (
+                  <ul className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {notionTasks.map((t) => (
+                      <li key={t.id} className="flex items-center justify-between text-xs bg-slate-50 rounded px-2 py-1.5">
+                        <span className="truncate flex-1">{t.title}</span>
+                        <Badge variant="secondary" className="text-[9px] ml-1 shrink-0">{t.status}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
         </div>
 
         <DialogFooter className="flex justify-between sm:justify-between">

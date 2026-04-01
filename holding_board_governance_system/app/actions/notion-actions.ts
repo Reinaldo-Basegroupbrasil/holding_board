@@ -2,6 +2,102 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { Client } from '@notionhq/client'
+
+const notion = new Client({ auth: process.env.NOTION_API_KEY })
+
+type GeminiTask = { tarefa: string; epico?: string; inicio?: string; fim?: string; checklist?: string[] }
+
+export async function createNotionTasksFromJsonAction(
+  projectNotionId: string,
+  phaseNotionId: string,
+  tasksJson: string
+): Promise<{ success?: true; count?: number; error?: string }> {
+  const tasksDbId = process.env.NOTION_TASKS_DB_ID
+  if (!projectNotionId || !phaseNotionId) {
+    return { error: 'Projeto e fase devem estar vinculados ao Notion.' }
+  }
+  if (!tasksDbId) {
+    return { error: 'NOTION_TASKS_DB_ID não configurado.' }
+  }
+  const cleaned = tasksJson.replace(/```json/g, '').replace(/```/g, '').trim()
+  let tasks: GeminiTask[]
+  try {
+    tasks = JSON.parse(cleaned)
+  } catch {
+    return { error: 'JSON inválido. Cole um array de tarefas.' }
+  }
+  if (!Array.isArray(tasks)) {
+    return { error: 'JSON deve ser um array de tarefas.' }
+  }
+  const validTasks = tasks.filter((t) => t.tarefa && typeof t.tarefa === 'string')
+  if (validTasks.length === 0) {
+    return { error: 'Nenhuma tarefa válida encontrada.' }
+  }
+  try {
+    for (const task of validTasks) {
+      const childrenBlocks: object[] = []
+      if (task.checklist && Array.isArray(task.checklist) && task.checklist.length > 0) {
+        childrenBlocks.push({
+          object: 'block',
+          type: 'heading_3',
+          heading_3: { rich_text: [{ text: { content: '📋 Plano de Ação' } }] },
+        })
+        task.checklist.forEach((item) => {
+          childrenBlocks.push({
+            object: 'block',
+            type: 'to_do',
+            to_do: {
+              rich_text: [{ type: 'text', text: { content: String(item) } }],
+              checked: false,
+            },
+          } as object)
+        })
+      }
+      const properties: Record<string, object> = {
+        'Nome da Tarefa': { title: [{ text: { content: task.tarefa } }] },
+        Status: { status: { name: 'A fazer' } },
+        Área: { select: { name: task.epico || 'Geral' } },
+        Projeto: { relation: [{ id: projectNotionId }] },
+        Fases: { relation: [{ id: phaseNotionId }] },
+      }
+      if (task.inicio || task.fim) {
+        properties['Prazo'] = {
+          date: { start: task.inicio || task.fim!, end: task.fim || null },
+        }
+      }
+      await notion.pages.create({
+        parent: { database_id: tasksDbId },
+        properties,
+        ...(childrenBlocks.length > 0 ? { children: childrenBlocks } : {}),
+      })
+    }
+    revalidatePath('/portfolio')
+    return { success: true, count: validTasks.length }
+  } catch (error: unknown) {
+    const msg = error && typeof error === 'object' && 'message' in error ? String((error as { message: string }).message) : 'Erro ao criar tarefas no Notion.'
+    console.error('createNotionTasksFromJsonAction:', error)
+    return { error: msg }
+  }
+}
+
+export async function getPhaseNotionTasksAction(phaseNotionId: string): Promise<{ id: string; title: string; status: string }[]> {
+  const tasksDbId = process.env.NOTION_TASKS_DB_ID
+  if (!phaseNotionId || !tasksDbId) return []
+  try {
+    const { results } = await notion.databases.query({
+      database_id: tasksDbId,
+      filter: { property: 'Fases', relation: { contains: phaseNotionId } },
+    })
+    return results.map((page: { id: string; properties: Record<string, { title?: { plain_text: string }[]; status?: { name: string } }>) => ({
+      id: page.id,
+      title: page.properties['Nome da Tarefa']?.title?.[0]?.plain_text || 'Sem título',
+      status: page.properties.Status?.status?.name || '—',
+    }))
+  } catch {
+    return []
+  }
+}
 
 export async function createPhaseWithNotionAction(data: { name: string, parentNotionId?: string }, parentId: string, timeline: string) {
   const supabase = await createClient()

@@ -31,7 +31,8 @@ export function ViabilitySection() {
 
   const formatMoney = (val: number) => {
     const converted = val / exchangeRate;
-    return new Intl.NumberFormat("pt-BR", {
+    const locale = targetCurrency === 'BRL' ? 'pt-BR' : 'en-US';
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: targetCurrency,
       maximumFractionDigits: 0,

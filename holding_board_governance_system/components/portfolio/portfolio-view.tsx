@@ -229,7 +229,7 @@ export function PortfolioView({ projects, milestones, companies, providers }: { 
                                     // A última fase visível ganha a bandeira
                                     const isLast = index === visiblePhases.length - 1
                                     return (
-                                        <PhaseCard key={phase.id} phase={phase} isLast={isLast} />
+                                        <PhaseCard key={phase.id} phase={phase} isLast={isLast} parentProjectNotionId={project.notion_page_id} />
                                     )
                                 }) : (
                                     <div className="w-full text-center py-2 border-2 border-dashed border-slate-100 rounded-lg text-xs text-slate-300">

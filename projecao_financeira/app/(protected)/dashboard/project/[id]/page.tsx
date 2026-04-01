@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from "react"; 
 import Link from "next/link";
-import { ArrowLeft, Plus, Settings, Download, Loader2, FileText, Globe, Upload, Database, ArrowRightLeft } from "lucide-react";
+import { ArrowLeft, Plus, Settings, Download, Loader2, FileText, Globe, Upload, Database, ArrowRightLeft, FileSpreadsheet } from "lucide-react";
 
 import { useProjectStore } from "@/store/projectStore";
 import { Assumption } from "@/types";
@@ -43,6 +43,7 @@ import { PdfLanguage } from "@/locales/pdfTranslations";
 
 // Import/Export de premissas
 import { buildExportPayload, downloadJSON, parseImportFile } from "@/lib/assumptionIO";
+import { exportProjectionToExcel } from "@/lib/excelExport";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -62,6 +63,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     profitTaxRate,
     scenarios,
     compareMode,
+    exchangeRate,
+    targetCurrency,
   } = useProjectStore();
   
   // Estado dos Modais e Loadings
@@ -96,13 +99,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   };
 
   // --- FUNÇÃO DE EXPORTAÇÃO PDF ---
-  const handleExport = async (lang: PdfLanguage) => {
+  const handleExport = async (lang: PdfLanguage, includeDetails?: boolean) => {
     if (!currentProject || !currentScenario || !projection) return;
 
     setIsExporting(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       await generatePDF({
         project: currentProject,
         scenario: currentScenario,
@@ -110,6 +113,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         lang: lang,
         chartElementId: 'chart-canvas',
         taxConfig: { mode: profitTaxMode, rate: profitTaxRate },
+        includeDetails: includeDetails ?? false,
       });
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);
@@ -124,6 +128,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     const payload = buildExportPayload(assumptions, currentProject.name, currentScenario.name);
     const safeName = currentProject.name.replace(/[^a-zA-Z0-9]/g, '_');
     downloadJSON(payload, `premissas_${safeName}_${currentScenario.name}.json`);
+  };
+
+  const handleExportExcel = (includeDetails?: boolean) => {
+    if (!currentProject || !currentScenario || !projection) return;
+    exportProjectionToExcel(
+      projection,
+      assumptions,
+      currentProject,
+      currentScenario,
+      exchangeRate,
+      targetCurrency,
+      includeDetails ?? false
+    );
   };
 
   const handleImportFile = async (file: File) => {
@@ -182,14 +199,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Relatório PDF</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleExport('pt')} className="cursor-pointer">
-                <FileText className="mr-2 h-4 w-4" /> Português (BR)
+              <DropdownMenuItem onClick={() => handleExport('pt', false)} className="cursor-pointer">
+                <FileText className="mr-2 h-4 w-4" /> Português (Resumido)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport('en')} className="cursor-pointer">
-                <Globe className="mr-2 h-4 w-4" /> English (US)
+              <DropdownMenuItem onClick={() => handleExport('pt', true)} className="cursor-pointer">
+                <FileText className="mr-2 h-4 w-4" /> Português (Completo)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport('es')} className="cursor-pointer">
-                <Globe className="mr-2 h-4 w-4" /> Español (ES)
+              <DropdownMenuItem onClick={() => handleExport('en', false)} className="cursor-pointer">
+                <Globe className="mr-2 h-4 w-4" /> English (Resumido)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('en', true)} className="cursor-pointer">
+                <Globe className="mr-2 h-4 w-4" /> English (Completo)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('es', false)} className="cursor-pointer">
+                <Globe className="mr-2 h-4 w-4" /> Español (Resumido)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('es', true)} className="cursor-pointer">
+                <Globe className="mr-2 h-4 w-4" /> Español (Completo)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleExportExcel(false)} className="cursor-pointer" disabled={!projection}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel (Resumido)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportExcel(true)} className="cursor-pointer" disabled={!projection}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel (Completo)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Premissas (Backup)</DropdownMenuLabel>

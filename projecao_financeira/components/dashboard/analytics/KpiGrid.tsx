@@ -21,11 +21,22 @@ export function KpiGrid() {
   const lowestCashBalance = Math.min(...totals.cash_accumulated.map(m => m.value));
   const maxCashNeed = lowestCashBalance < 0 ? Math.abs(lowestCashBalance) : 0;
 
-  const paybackMonthIndex = totals.cash_accumulated.findIndex(m => m.value >= 0);
+  const preOpCash = projection.preOperational?.cash_accumulated || 0;
+  let seenNegative = preOpCash < 0;
+  let paybackMonthIndex = -1;
+  for (let i = 0; i < totals.cash_accumulated.length; i++) {
+    if (totals.cash_accumulated[i].value < 0) seenNegative = true;
+    if (seenNegative && totals.cash_accumulated[i].value >= 0) {
+      paybackMonthIndex = i;
+      break;
+    }
+  }
+  if (!seenNegative && totals.cash_accumulated.length > 0) paybackMonthIndex = 0;
+  const hasNegativePhase = seenNegative;
   const paybackText = paybackMonthIndex === -1 ? "N/A" : `Mês ${paybackMonthIndex + 1}`;
   const paybackSubtext = paybackMonthIndex === -1 
     ? "Não atinge o break-even no período" 
-    : "Quando o projeto se paga (Payback)";
+    : hasNegativePhase ? "Quando o projeto se paga (Payback)" : "Projeto lucrativo desde o início";
 
   const totalEbitda = totals.ebitda.reduce((acc, curr) => acc + curr.value, 0);
   const avgEbitda = totalEbitda / totals.ebitda.length;
@@ -40,7 +51,8 @@ export function KpiGrid() {
   // --- FORMATADORES ---
   const formatMoney = (val: number) => {
     const converted = val / exchangeRate;
-    return new Intl.NumberFormat('pt-BR', { 
+    const locale = targetCurrency === 'BRL' ? 'pt-BR' : 'en-US';
+    return new Intl.NumberFormat(locale, { 
       style: 'currency', 
       currency: targetCurrency,
       maximumFractionDigits: 0 

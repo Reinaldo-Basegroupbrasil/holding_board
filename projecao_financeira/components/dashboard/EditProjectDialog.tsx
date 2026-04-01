@@ -26,16 +26,20 @@ export function EditProjectDialog({ isOpen, onClose, project }: Props) {
     name: "",
     description: "",
     currency_main: "BRL",
-    projection_months: 36
+    projection_months: 36,
+    projection_start_date: ""
   });
 
   useEffect(() => {
     if (project) {
+      const startIso = project.projection_start_date;
+      const monthInput = startIso ? startIso.slice(0, 7) : "";
       setFormData({
         name: project.name,
         description: project.description || "",
         currency_main: project.currency_main || "BRL",
-        projection_months: project.projection_months || 36
+        projection_months: project.projection_months || 36,
+        projection_start_date: monthInput
       });
     }
   }, [project, isOpen]);
@@ -44,7 +48,18 @@ export function EditProjectDialog({ isOpen, onClose, project }: Props) {
     e.preventDefault();
     setLoading(true);
     try {
-      await updateProjectDetails(project.id, formData);
+      const payload: Partial<Project> = {
+        name: formData.name,
+        description: formData.description,
+        currency_main: formData.currency_main,
+        projection_months: formData.projection_months,
+      };
+      if (formData.projection_start_date) {
+        payload.projection_start_date = `${formData.projection_start_date}-01`;
+      } else {
+        payload.projection_start_date = null as any;
+      }
+      await updateProjectDetails(project.id, payload);
       onClose();
     } catch (error) {
       console.error(error);
@@ -118,6 +133,23 @@ export function EditProjectDialog({ isOpen, onClose, project }: Props) {
               </SelectContent>
             </Select>
             <p className="text-[10px] text-muted-foreground">Define quantos meses a projeção vai cobrir. Afeta DRE, caixa e indicadores.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Mês inicial da projeção</Label>
+            <Input
+              type="month"
+              value={formData.projection_start_date}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  projection_start_date: e.target.value,
+                })
+              }
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Opcional. Se vazio, a projeção começa no mês atual. Ex.: selecionar 2026-05 fará a linha do tempo iniciar em mai/26.
+            </p>
           </div>
 
           <DialogFooter className="flex justify-between items-center sm:justify-between">

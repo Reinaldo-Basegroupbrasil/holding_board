@@ -25,11 +25,10 @@ export function CashFlowChart() {
 
   // CORREÇÃO AQUI: Mudamos 'val: number' para 'val: any' para satisfazer o Recharts
   const formatCurrency = (val: any) => {
-    // Garante que é número antes de formatar
     const numberVal = Number(val);
     if (isNaN(numberVal)) return "-";
-
-    return new Intl.NumberFormat('pt-BR', { 
+    const locale = targetCurrency === 'BRL' ? 'pt-BR' : 'en-US';
+    return new Intl.NumberFormat(locale, { 
         style: 'currency', 
         currency: targetCurrency, 
         compactDisplay: "short", 

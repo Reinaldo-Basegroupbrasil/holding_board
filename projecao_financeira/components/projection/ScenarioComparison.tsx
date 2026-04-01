@@ -73,7 +73,8 @@ export function ScenarioComparison() {
   const formatMoney = (val: number) => {
     if (Math.abs(val) < 0.01) return "-";
     const converted = val / exchangeRate;
-    return new Intl.NumberFormat("pt-BR", {
+    const locale = displayCurrency === 'BRL' ? 'pt-BR' : 'en-US';
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: displayCurrency,
       maximumFractionDigits: 0,

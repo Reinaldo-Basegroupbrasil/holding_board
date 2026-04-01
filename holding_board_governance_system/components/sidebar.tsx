@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -25,7 +26,8 @@ export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   
-  const { role, isAdmin, userEmail, loading } = useAdmin() 
+  const { role, isAdmin, userEmail, loading } = useAdmin()
+  const [logoError, setLogoError] = useState(false) 
 
   const handleLogout = async () => {
     const supabase = createBrowserClient(
@@ -107,8 +109,19 @@ export function Sidebar() {
     <div className="space-y-4 py-4 flex flex-col h-full bg-slate-900 text-white border-r border-slate-800">
       <div className="px-3 py-2 flex-1">
         <Link href={role === 'partner' ? '/board/todo' : '/'} className="flex items-center pl-3 mb-14">
-          <div className="relative w-8 h-8 mr-4 flex items-center justify-center">
-            <Image src="/logo-basegroup.png" alt="Base Group" width={32} height={32} className="object-contain" />
+          <div className="relative w-8 h-8 mr-4 flex items-center justify-center rounded-lg border border-slate-700 bg-black">
+            {logoError ? (
+              <span className="font-bold text-lg text-white">H</span>
+            ) : (
+              <Image
+                src="/logo-basegroup.png"
+                alt="Base Group"
+                width={32}
+                height={32}
+                className="object-contain"
+                onError={() => setLogoError(true)}
+              />
+            )}
           </div>
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
             Holding Board

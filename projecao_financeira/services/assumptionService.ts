@@ -16,6 +16,13 @@ function toNumberOrZero(value: unknown): number {
 function sanitizeAssumptionFromDb(row: any): Assumption {
   // Supabase pode devolver números como string dependendo do schema/driver.
   // Garantimos coerção básica para evitar NaN propagando no engine.
+  const growthSegments = row?.growth_segments;
+  const parsedGrowthSegments = Array.isArray(growthSegments)
+    ? growthSegments
+    : typeof growthSegments === 'string'
+      ? (() => { try { return JSON.parse(growthSegments); } catch { return undefined; } })()
+      : undefined;
+
   return {
     ...row,
     amount: toNumberOrZero(row?.amount),
@@ -29,6 +36,7 @@ function sanitizeAssumptionFromDb(row: any): Assumption {
     amortization_period: row?.amortization_period === null || row?.amortization_period === undefined ? undefined : toNumberOrZero(row?.amortization_period),
     payment_lag: row?.payment_lag === null || row?.payment_lag === undefined ? undefined : toNumberOrZero(row?.payment_lag),
     growth_start_month: row?.growth_start_month === null || row?.growth_start_month === undefined ? undefined : toNumberOrZero(row?.growth_start_month),
+    growth_segments: parsedGrowthSegments,
   } as Assumption;
 }
 

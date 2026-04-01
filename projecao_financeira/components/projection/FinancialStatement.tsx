@@ -7,9 +7,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MonthlyData } from "@/types";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { EditableMonthCell } from "./EditableMonthCell";
 
 export function FinancialStatement() {
-  const { projection, currentProject, isLoading, exchangeRate, targetCurrency } = useProjectStore();
+  const {
+    projection,
+    currentProject,
+    isLoading,
+    exchangeRate,
+    targetCurrency,
+    monthOverrides,
+    markAsPaid,
+    unmarkPaid,
+    setMonthOverride,
+  } = useProjectStore();
   const [expandedRows, setExpandedRows] = useState<string[]>([]);
 
   if (isLoading && !projection) return <Skeleton className="w-full h-64" />;
@@ -46,10 +57,11 @@ export function FinancialStatement() {
     }
   };
 
+  const locale = displayCurrency === 'BRL' ? 'pt-BR' : 'en-US';
   const formatMoney = (val: number) => {
     if (Math.abs(val) < 0.01) return "-";
     const convertedVal = val / exchangeRate;
-    return new Intl.NumberFormat('pt-BR', { 
+    return new Intl.NumberFormat(locale, { 
       style: 'currency', 
       currency: displayCurrency, 
       maximumFractionDigits: 0 
@@ -58,7 +70,7 @@ export function FinancialStatement() {
   
   const formatNumber = (val: number) => {
     if (Math.abs(val) < 0.01) return "-";
-    return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(val);
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(val);
   };
 
   const getYearlyTotal = (data: MonthlyData[], yearIndex: number) => {
@@ -79,12 +91,16 @@ export function FinancialStatement() {
     if (fmt === 'number') return formatNumber(val);
     if (fmt === 'percent') {
       if (Math.abs(val) < 0.01) return "-";
-      return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(val)}%`;
+      return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(val)}%`;
     }
     return formatMoney(val);
   };
 
-  const Row = ({ label, data, preOpValue = 0, type = 'normal', indent = false, categoryKey = "", valueFormat }: any) => {
+  const getYearlyValue = (data: MonthlyData[], yearIndex: number, mode: 'sum' | 'last_value' = 'sum') => {
+    return mode === 'last_value' ? getYearlyLastValue(data, yearIndex) : getYearlyTotal(data, yearIndex);
+  };
+
+  const Row = ({ label, data, preOpValue = 0, type = 'normal', indent = false, categoryKey = "", valueFormat, yearlyDisplay = 'sum' }: any) => {
     const safeData = data || [];
     const isExpanded = categoryKey && expandedRows.includes(categoryKey);
     const hasChildren = categoryKey && items.some(i => i.category === categoryKey);
@@ -134,7 +150,7 @@ export function FinancialStatement() {
                 </td>
                 {isDecember && (
                   <td className="p-3 text-xs text-right min-w-[120px] font-bold bg-gray-100 border-r border-gray-300 text-gray-900">
-                    {fmt(getYearlyTotal(safeData, yearNum - 1))}
+                    {fmt(getYearlyValue(safeData, yearNum - 1, yearlyDisplay))}
                   </td>
                 )}
               </Fragment>
@@ -147,6 +163,7 @@ export function FinancialStatement() {
             .map((subItem) => {
               const effectiveFormat = (subItem.format === 'percent' && subItem.driver_id) ? 'currency' : subItem.format;
               const subFmt = (v: number) => formatByType(v, effectiveFormat);
+              const subYearlyDisplay = subItem.yearly_display || 'sum';
               return (
                 <tr key={subItem.assumptionId} className="bg-slate-50/50 hover:bg-slate-100 text-slate-600 animate-in fade-in slide-in-from-top-1">
                   <td className="p-2 text-xs sticky left-0 bg-slate-50 border-r min-w-[250px] z-10 pl-12 italic border-l-4 border-l-primary/20 flex items-center">
@@ -160,12 +177,21 @@ export function FinancialStatement() {
                     const isDecember = (index + 1) % 12 === 0;
                     return (
                       <Fragment key={m.monthIndex}>
-                        <td className={`p-2 text-xs text-right min-w-[110px] ${isDecember ? "border-r-2 border-gray-300" : ""}`}>
-                          {subFmt(m.value)}
-                        </td>
+                        <EditableMonthCell
+                          assumptionId={subItem.assumptionId}
+                          monthIndex={m.monthIndex}
+                          value={m.value}
+                          formatFn={subFmt}
+                          category={subItem.category}
+                          monthOverrides={monthOverrides}
+                          onMarkAsPaid={markAsPaid}
+                          onUnmarkPaid={unmarkPaid}
+                          onRemoveValue={(aid, mid) => setMonthOverride(aid, mid, "exclude")}
+                          className={isDecember ? "border-r-2 border-gray-300" : ""}
+                        />
                         {isDecember && (
                           <td className="p-2 text-xs text-right min-w-[120px] bg-slate-100 border-r border-gray-300">
-                            {subFmt(getYearlyTotal(subItem.data || [], Math.ceil((index + 1) / 12) - 1))}
+                            {subFmt(getYearlyValue(subItem.data || [], Math.ceil((index + 1) / 12) - 1, subYearlyDisplay))}
                           </td>
                         )}
                       </Fragment>
@@ -205,14 +231,13 @@ export function FinancialStatement() {
                 <th className="p-3 text-left text-xs font-bold text-muted-foreground sticky left-0 bg-background z-20 min-w-[250px] border-r">CONTA</th>
                 <th className="p-2 text-xs font-bold text-center bg-orange-50/50 border-r min-w-[100px] text-orange-800">SETUP</th>
                 {(totals.revenue || []).map((m, index) => {
-                  const d = new Date(m.date);
                   const isDecember = (index + 1) % 12 === 0;
                   return (
                     <Fragment key={m.monthIndex}>
                       <th className={`p-2 text-xs font-medium text-muted-foreground text-right min-w-[110px] ${isDecember ? "border-r-2 border-gray-300" : ""}`}>
-                        {d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })}
+                        {`M${index + 1}`}
                       </th>
-                      {isDecember && <th className="p-2 text-xs font-black text-center bg-gray-200 border-r border-gray-300 min-w-[120px] text-gray-800">TOTAL {d.getFullYear()}</th>}
+                      {isDecember && <th className="p-2 text-xs font-black text-center bg-gray-200 border-r border-gray-300 min-w-[120px] text-gray-800">{`TOTAL Ano ${Math.ceil((index + 1) / 12)}`}</th>}
                     </Fragment>
                   );
                 })}
@@ -226,9 +251,10 @@ export function FinancialStatement() {
                     const children = childBaseItems.filter(c => c.driver_id === parent.assumptionId);
                     return (
                       <Fragment key={parent.assumptionId}>
-                        <Row label={parent.name} data={parent.data} preOpValue={parent.preOperationalValue} valueFormat={parent.format || 'number'} />
+                        <Row label={parent.name} data={parent.data} preOpValue={parent.preOperationalValue} valueFormat={parent.format || 'number'} yearlyDisplay={parent.yearly_display || 'sum'} />
                         {children.map(child => {
                           const childFmt = (v: number) => formatByType(v, child.format || 'number');
+                          const childYearlyDisplay = child.yearly_display || 'sum';
                           return (
                             <tr key={child.assumptionId} className="bg-blue-50/30 hover:bg-blue-50 text-slate-600 animate-in fade-in">
                               <td className="p-2 text-xs sticky left-0 bg-blue-50/30 border-r min-w-[250px] z-10 pl-10 italic border-l-4 border-l-blue-200 flex items-center">
@@ -242,12 +268,21 @@ export function FinancialStatement() {
                                 const isDecember = (index + 1) % 12 === 0;
                                 return (
                                   <Fragment key={m.monthIndex}>
-                                    <td className={`p-2 text-xs text-right min-w-[110px] ${isDecember ? "border-r-2 border-gray-300" : ""}`}>
-                                      {childFmt(m.value)}
-                                    </td>
+                                    <EditableMonthCell
+                                      assumptionId={child.assumptionId}
+                                      monthIndex={m.monthIndex}
+                                      value={m.value}
+                                      formatFn={childFmt}
+                                      category={child.category}
+                                      monthOverrides={monthOverrides}
+                                      onMarkAsPaid={markAsPaid}
+                                      onUnmarkPaid={unmarkPaid}
+                                      onRemoveValue={(aid, mid) => setMonthOverride(aid, mid, "exclude")}
+                                      className={isDecember ? "border-r-2 border-gray-300" : ""}
+                                    />
                                     {isDecember && (
                                       <td className="p-2 text-xs text-right min-w-[120px] bg-slate-100 border-r border-gray-300">
-                                        {childFmt(getYearlyTotal(child.data || [], Math.ceil((index + 1) / 12) - 1))}
+                                        {childFmt(getYearlyValue(child.data || [], Math.ceil((index + 1) / 12) - 1, childYearlyDisplay))}
                                       </td>
                                     )}
                                   </Fragment>
@@ -260,7 +295,7 @@ export function FinancialStatement() {
                     );
                   })}
                   {childBaseItems.filter(c => !parentBaseItems.some(p => p.assumptionId === c.driver_id)).map(orphan => (
-                    <Row key={orphan.assumptionId} label={orphan.name} data={orphan.data} preOpValue={orphan.preOperationalValue} valueFormat={orphan.format || 'number'} />
+                    <Row key={orphan.assumptionId} label={orphan.name} data={orphan.data} preOpValue={orphan.preOperationalValue} valueFormat={orphan.format || 'number'} yearlyDisplay={orphan.yearly_display || 'sum'} />
                   ))}
                   <tr className="h-4 border-b"></tr>
                 </>

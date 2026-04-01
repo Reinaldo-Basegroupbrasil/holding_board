@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { Project, Assumption, ProjectionSummary, Scenario } from '@/types';
+import { Project, Assumption, AssumptionMonthOverride, ProjectionSummary, Scenario } from '@/types';
 import { projectService } from '@/services/projectService';
 import { assumptionService } from '@/services/assumptionService';
+import { monthOverrideService } from '@/services/monthOverrideService';
 import { scenarioService } from '@/services/scenarioService';
 import { calculateProjection, TaxConfig } from '@/lib/projectionEngine';
 
@@ -16,6 +17,7 @@ interface ProjectState {
   
   assumptions: Assumption[];
   projection: ProjectionSummary | null;
+  monthOverrides: AssumptionMonthOverride[];
 
   exchangeRate: number;    
   targetCurrency: string;
@@ -47,6 +49,10 @@ interface ProjectState {
   removeAssumption: (id: string) => Promise<void>;
   importAssumptions: (items: Partial<Assumption>[]) => Promise<number>;
 
+  markAsPaid: (assumptionId: string, monthIndex: number) => Promise<void>;
+  unmarkPaid: (assumptionId: string, monthIndex: number) => Promise<void>;
+  setMonthOverride: (assumptionId: string, monthIndex: number, action: 'paid' | 'exclude' | 'override', overrideValue?: number) => Promise<void>;
+
   setExchangeRate: (rate: number, currency: string) => void;
   setDiscountRate: (rate: number) => void;
   setProfitTaxMode: (mode: 'manual' | 'auto') => void;
@@ -64,6 +70,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   currentScenario: null,
   assumptions: [],
   projection: null,
+  monthOverrides: [],
   isLoading: false,
   exchangeRate: 1.0,
   targetCurrency: 'BRL',
@@ -99,10 +106,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         set({ currentProject: updated });
         set((state) => ({ projects: state.projects.map(p => p.id === id ? updated : p) }));
         if (data.currency_main) set({ targetCurrency: data.currency_main, exchangeRate: 1.0 });
-        if (data.projection_months) {
-          const { assumptions, profitTaxMode, profitTaxRate } = get();
+        const { assumptions, profitTaxMode, profitTaxRate, monthOverrides } = get();
+        const months = data.projection_months || updated.projection_months || 36;
+        const start = updated.projection_start_date;
+        if (data.projection_months || data.projection_start_date) {
           const tc: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
-          set({ projection: calculateProjection(assumptions, tc, data.projection_months) });
+          set({ projection: calculateProjection(assumptions, tc, months, monthOverrides, start) });
         }
       }
     } catch (error) { console.error("Erro update:", error); }
@@ -184,7 +193,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       for (const item of childBases) {
         const { id, created_at, ...rest } = item;
         const newDriverId = rest.driver_id && idMap[rest.driver_id] ? idMap[rest.driver_id] : null;
-        const payload = { ...rest, driver_id: newDriverId, project_id: currentProject.id, scenario_id: newScenario.id };
+        const newDriverId2 = rest.driver_id_2 && idMap[rest.driver_id_2] ? idMap[rest.driver_id_2] : null;
+        const payload = { ...rest, driver_id: newDriverId, driver_id_2: newDriverId2, project_id: currentProject.id, scenario_id: newScenario.id };
         const created = await assumptionService.createAssumption(payload as any);
         if (created) idMap[item.id] = created.id;
       }
@@ -192,9 +202,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       for (const item of others) {
         const { id, created_at, ...rest } = item;
         const newDriverId = rest.driver_id && idMap[rest.driver_id] ? idMap[rest.driver_id] : null;
-        const payload = { ...rest, driver_id: newDriverId, project_id: currentProject.id, scenario_id: newScenario.id };
+        const newDriverId2 = rest.driver_id_2 && idMap[rest.driver_id_2] ? idMap[rest.driver_id_2] : null;
+        const payload = { ...rest, driver_id: newDriverId, driver_id_2: newDriverId2, project_id: currentProject.id, scenario_id: newScenario.id };
         const created = await assumptionService.createAssumption(payload as any);
         if (created) idMap[item.id] = created.id;
+      }
+
+      const sourceOverrides = await monthOverrideService.getOverrides(currentScenario.id);
+      for (const o of sourceOverrides) {
+        const newAssumptionId = idMap[o.assumption_id];
+        if (newAssumptionId) {
+          await monthOverrideService.upsertOverride({
+            assumption_id: newAssumptionId,
+            month_index: o.month_index,
+            action: o.action,
+            override_value: o.override_value,
+          });
+        }
       }
 
       set(state => ({ scenarios: [...state.scenarios, newScenario] }));
@@ -249,10 +273,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchAssumptions: async (scenarioId) => {
     try {
-      const data = await assumptionService.getAssumptions(scenarioId);
+      const [data, overrides] = await Promise.all([
+        assumptionService.getAssumptions(scenarioId),
+        monthOverrideService.getOverrides(scenarioId),
+      ]);
       const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
-      const months = get().currentProject?.projection_months || 36;
-      set({ assumptions: data, projection: calculateProjection(data, tc, months) });
+      const currentProject = get().currentProject;
+      const months = currentProject?.projection_months || 36;
+      const start = currentProject?.projection_start_date;
+      set({
+        assumptions: data,
+        monthOverrides: overrides,
+        projection: calculateProjection(data, tc, months, overrides, start),
+      });
     } catch (error) { console.error(error); }
   },
 
@@ -270,39 +303,105 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       const created = await assumptionService.createAssumption(assumptionWithScenario);
       if (created) {
+        const { monthOverrides, currentProject, profitTaxMode, profitTaxRate } = get();
         const newList = [...get().assumptions, created];
-        const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
-        const months = get().currentProject?.projection_months || 36;
-        set({ assumptions: newList, projection: calculateProjection(newList, tc, months) });
+        const tc: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
+        const months = currentProject?.projection_months || 36;
+        const start = currentProject?.projection_start_date;
+        set({ assumptions: newList, projection: calculateProjection(newList, tc, months, monthOverrides, start) });
       }
     } catch (error) { console.error("Erro add:", error); }
   },
 
   updateAssumption: async (id, updates) => {
     try {
-      const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
-      const months = get().currentProject?.projection_months || 36;
+      const { monthOverrides, currentProject, profitTaxMode, profitTaxRate } = get();
+      const tc: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
+      const months = currentProject?.projection_months || 36;
+      const start = currentProject?.projection_start_date;
       const currentList = get().assumptions;
       const updatedList = currentList.map(item => item.id === id ? { ...item, ...updates } : item);
-      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc, months) }); 
+      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc, months, monthOverrides, start) }); 
 
       const saved = await assumptionService.updateAssumption(id, updates);
       if (saved) {
          const finalList = get().assumptions.map(item => item.id === id ? saved : item);
-         set({ assumptions: finalList, projection: calculateProjection(finalList, tc, months) });
+         set({ assumptions: finalList, projection: calculateProjection(finalList, tc, months, monthOverrides, start) });
       }
     } catch (error) { console.error("Erro update:", error); }
   },
 
   removeAssumption: async (id) => {
     try {
-      const tc: TaxConfig = { mode: get().profitTaxMode, rate: get().profitTaxRate };
-      const months = get().currentProject?.projection_months || 36;
+      const { monthOverrides, currentProject, profitTaxMode, profitTaxRate } = get();
+      const tc: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
+      const months = currentProject?.projection_months || 36;
+      const start = currentProject?.projection_start_date;
       const currentList = get().assumptions;
       const updatedList = currentList.filter(item => item.id !== id);
-      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc, months) });
+      set({ assumptions: updatedList, projection: calculateProjection(updatedList, tc, months, monthOverrides, start) });
       await assumptionService.deleteAssumption(id);
     } catch (error) { console.error("Erro delete:", error); }
+  },
+
+  markAsPaid: async (assumptionId, monthIndex) => {
+    try {
+      const { currentScenario } = get();
+      if (!currentScenario) return;
+      await monthOverrideService.upsertOverride({
+        assumption_id: assumptionId,
+        month_index: monthIndex,
+        action: 'paid',
+      });
+      const overrides = await monthOverrideService.getOverrides(currentScenario.id);
+      const { assumptions, profitTaxMode, profitTaxRate, currentProject } = get();
+      const tc: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
+      const months = currentProject?.projection_months || 36;
+      const start = currentProject?.projection_start_date;
+      set({
+        monthOverrides: overrides,
+        projection: calculateProjection(assumptions, tc, months, overrides, start),
+      });
+    } catch (error) { console.error("Erro markAsPaid:", error); }
+  },
+
+  unmarkPaid: async (assumptionId, monthIndex) => {
+    try {
+      const { currentScenario } = get();
+      if (!currentScenario) return;
+      await monthOverrideService.deleteOverrideByAssumptionAndMonth(assumptionId, monthIndex);
+      const overrides = await monthOverrideService.getOverrides(currentScenario.id);
+      const { assumptions, profitTaxMode, profitTaxRate, currentProject } = get();
+      const tc: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
+      const months = currentProject?.projection_months || 36;
+      const start = currentProject?.projection_start_date;
+      set({
+        monthOverrides: overrides,
+        projection: calculateProjection(assumptions, tc, months, overrides, start),
+      });
+    } catch (error) { console.error("Erro unmarkPaid:", error); }
+  },
+
+  setMonthOverride: async (assumptionId, monthIndex, action, overrideValue) => {
+    try {
+      const { currentScenario } = get();
+      if (!currentScenario) return;
+      await monthOverrideService.upsertOverride({
+        assumption_id: assumptionId,
+        month_index: monthIndex,
+        action,
+        override_value: overrideValue,
+      });
+      const overrides = await monthOverrideService.getOverrides(currentScenario.id);
+      const { assumptions, profitTaxMode, profitTaxRate, currentProject } = get();
+      const tc: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
+      const months = currentProject?.projection_months || 36;
+      const start = currentProject?.projection_start_date;
+      set({
+        monthOverrides: overrides,
+        projection: calculateProjection(assumptions, tc, months, overrides, start),
+      });
+    } catch (error) { console.error("Erro setMonthOverride:", error); }
   },
 
   importAssumptions: async (items) => {
@@ -341,9 +440,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         let newDriverId = cleanItem.driver_id;
         if (newDriverId && idMap[newDriverId]) newDriverId = idMap[newDriverId];
         else if (newDriverId) newDriverId = null;
+        let newDriverId2 = cleanItem.driver_id_2;
+        if (newDriverId2 && idMap[newDriverId2]) newDriverId2 = idMap[newDriverId2];
+        else if (newDriverId2) newDriverId2 = null;
         const payload = {
           ...cleanItem,
           driver_id: newDriverId,
+          driver_id_2: newDriverId2,
           project_id: currentProject.id,
           scenario_id: currentScenario.id,
         } as Omit<Assumption, 'id' | 'created_at'>;
@@ -357,14 +460,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       for (const item of rest) {
         const { _exportId, ...cleanItem } = item as any;
         let newDriverId = cleanItem.driver_id;
-        if (newDriverId && idMap[newDriverId]) {
-          newDriverId = idMap[newDriverId];
-        } else if (newDriverId) {
-          newDriverId = null;
-        }
+        if (newDriverId && idMap[newDriverId]) newDriverId = idMap[newDriverId];
+        else if (newDriverId) newDriverId = null;
+        let newDriverId2 = cleanItem.driver_id_2;
+        if (newDriverId2 && idMap[newDriverId2]) newDriverId2 = idMap[newDriverId2];
+        else if (newDriverId2) newDriverId2 = null;
         const payload = {
           ...cleanItem,
           driver_id: newDriverId,
+          driver_id_2: newDriverId2,
           project_id: currentProject.id,
           scenario_id: currentScenario.id,
         } as Omit<Assumption, 'id' | 'created_at'>;
@@ -391,19 +495,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setProfitTaxMode: (mode: 'manual' | 'auto') => {
     set({ profitTaxMode: mode });
-    const { assumptions, profitTaxRate, currentProject } = get();
+    const { assumptions, profitTaxRate, currentProject, monthOverrides } = get();
     const taxConfig = { mode, rate: profitTaxRate };
     const months = currentProject?.projection_months || 36;
-    set({ projection: calculateProjection(assumptions, taxConfig, months) });
+    const start = currentProject?.projection_start_date;
+    set({ projection: calculateProjection(assumptions, taxConfig, months, monthOverrides, start) });
   },
 
   setProfitTaxRate: (rate: number) => {
     set({ profitTaxRate: rate });
-    const { assumptions, profitTaxMode, currentProject } = get();
+    const { assumptions, profitTaxMode, currentProject, monthOverrides } = get();
     if (profitTaxMode === 'auto') {
       const taxConfig = { mode: profitTaxMode, rate };
       const months = currentProject?.projection_months || 36;
-      set({ projection: calculateProjection(assumptions, taxConfig, months) });
+      const start = currentProject?.projection_start_date;
+      set({ projection: calculateProjection(assumptions, taxConfig, months, monthOverrides, start) });
     }
   },
 
@@ -434,13 +540,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const taxConfig: TaxConfig = { mode: profitTaxMode, rate: profitTaxRate };
       const months = currentProject?.projection_months || 36;
+      const start = currentProject?.projection_start_date;
       const result: Record<string, { scenario: Scenario; projection: ProjectionSummary }> = {};
 
       for (const sid of compareScenarioIds) {
         const scenario = scenarios.find(s => s.id === sid);
         if (!scenario) continue;
-        const data = await assumptionService.getAssumptions(sid);
-        result[sid] = { scenario, projection: calculateProjection(data, taxConfig, months) };
+        const [data, overrides] = await Promise.all([
+          assumptionService.getAssumptions(sid),
+          monthOverrideService.getOverrides(sid),
+        ]);
+        result[sid] = { scenario, projection: calculateProjection(data, taxConfig, months, overrides, start) };
       }
 
       set({ compareProjections: result, compareMode: true });

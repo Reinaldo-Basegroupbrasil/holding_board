@@ -86,12 +86,15 @@ export function calculateDiscountedPayback(
 ): number | null {
   const r = annualToMonthlyRate(annualRatePercent);
   let accumulated = initialCashFlow;
+  let seenNegative = initialCashFlow < 0;
 
   for (let t = 0; t < monthlyCashFlows.length; t++) {
     accumulated += monthlyCashFlows[t] / Math.pow(1 + r, t + 1);
-    if (accumulated >= 0) return t + 1;
+    if (accumulated < 0) seenNegative = true;
+    if (seenNegative && accumulated >= 0) return t + 1;
   }
 
+  if (!seenNegative) return 1;
   return null;
 }
 

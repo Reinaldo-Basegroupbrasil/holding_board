@@ -6,6 +6,7 @@ import {
   calculateWithGrowthDelay,
   calculateProjection,
   TaxConfig,
+  getValueFromSegments,
 } from '@/lib/projectionEngine';
 
 // ---------------------------------------------------------------------------
@@ -166,6 +167,16 @@ describe('calculateProjection', () => {
       const result = calculateProjection([], undefined, 12);
       expect(result.totals.revenue).toHaveLength(12);
       expect(result.totals.cash_flow).toHaveLength(12);
+    });
+
+    it('uses provided startDate as base for monthly dates', () => {
+      const base = new Date(2026, 4, 1); // 1st May 2026
+      const result = calculateProjection([], undefined, 3, null, base);
+      const dates = result.totals.revenue.map(m => new Date(m.date));
+      expect(dates[0].getFullYear()).toBe(2026);
+      expect(dates[0].getMonth()).toBe(4); // May
+      expect(dates[1].getMonth()).toBe(5); // Jun
+      expect(dates[2].getMonth()).toBe(6); // Jul
     });
 
     it('all values are zero for empty assumptions', () => {
@@ -660,6 +671,134 @@ describe('calculateProjection', () => {
       expect(result.totals.revenue[2].value).toBeCloseTo(1000, 2); // month 3
       expect(result.totals.revenue[3].value).toBe(0); // month 4
       expect(result.totals.revenue[4].value).toBe(0); // month 5
+    });
+  });
+
+  describe('base with single driver (meu valor × base, resultado na própria linha)', () => {
+    it('base shows amount × driver in its own line', () => {
+      const cards = makeAssumption({
+        id: 'cards',
+        category: 'base',
+        name: 'Carteira Acumulada',
+        amount: 100,
+        start_month: 1,
+      });
+      const volumePerCard = makeAssumption({
+        id: 'vol',
+        category: 'base',
+        name: 'Volume de recarga por cartão',
+        amount: 770,
+        start_month: 1,
+        driver_id: 'cards',
+        driver_operation: 'single',
+        driver_type: 'total',
+      });
+      const result = calculateProjection([cards, volumePerCard], undefined, 3);
+      const volItem = result.items.find(i => i.assumptionId === 'vol')!;
+      // Month 1: 770 × 100 = 77_000
+      expect(volItem.data[0].value).toBeCloseTo(77000, 2);
+      // Month 2: 770 × 100 = 77_000 (cards constant)
+      expect(volItem.data[1].value).toBeCloseTo(77000, 2);
+    });
+
+    it('base with single driver and growth on amount', () => {
+      const cards = makeAssumption({
+        id: 'cards',
+        category: 'base',
+        amount: 50,
+        start_month: 1,
+        growth_rate: 0,
+      });
+      const vol = makeAssumption({
+        id: 'vol',
+        category: 'base',
+        amount: 100,
+        start_month: 1,
+        driver_id: 'cards',
+        driver_operation: 'single',
+        driver_type: 'total',
+        growth_rate: 10,
+      });
+      const result = calculateProjection([cards, vol], undefined, 2);
+      // Month 1: 100 × 50 = 5000
+      expect(result.items.find(i => i.assumptionId === 'vol')!.data[0].value).toBeCloseTo(5000, 2);
+      // Month 2: 100*(1+10/100/12)^1 × 50 ≈ 5041.67
+      expect(result.items.find(i => i.assumptionId === 'vol')!.data[1].value).toBeCloseTo(100 * Math.pow(1 + 10/100/12, 1) * 50, 1);
+    });
+  });
+
+  describe('multi-driver (driver_operation multiply/sum)', () => {
+    it('multiplies revenue by two drivers when driver_operation is multiply', () => {
+      const base1 = makeAssumption({ id: 'vol', name: 'Vol', category: 'base', amount: 10 });
+      const base2 = makeAssumption({ id: 'cards', name: 'Cards', category: 'base', amount: 100 });
+      const rev = makeAssumption({
+        id: 'r',
+        category: 'revenue',
+        amount: 1,
+        driver_id: 'vol',
+        driver_id_2: 'cards',
+        driver_operation: 'multiply',
+      });
+      const result = calculateProjection([base1, base2, rev], undefined, 3);
+      // revenue = 1 * vol * cards = 1 * 10 * 100 = 1000 per month
+      result.totals.revenue.forEach(m => expect(m.value).toBeCloseTo(1000, 2));
+    });
+
+    it('sums two drivers when driver_operation is sum', () => {
+      const base1 = makeAssumption({ id: 'a', name: 'A', category: 'base', amount: 50 });
+      const base2 = makeAssumption({ id: 'b', name: 'B', category: 'base', amount: 30 });
+      const rev = makeAssumption({
+        id: 'r',
+        category: 'revenue',
+        amount: 2,
+        driver_id: 'a',
+        driver_id_2: 'b',
+        driver_operation: 'sum',
+      });
+      const result = calculateProjection([base1, base2, rev], undefined, 3);
+      // revenue = 2 * (50 + 30) = 160 per month
+      result.totals.revenue.forEach(m => expect(m.value).toBeCloseTo(160, 2));
+    });
+  });
+
+  describe('growth_segments', () => {
+    it('returns correct value for absolute segment', () => {
+      const segs = [{ start_month: 1, end_month: 6, value: 1200, is_absolute: true }];
+      expect(getValueFromSegments(1, segs, 0)).toBe(1200);
+      expect(getValueFromSegments(3, segs, 0)).toBe(1200);
+      expect(getValueFromSegments(6, segs, 0)).toBe(1200);
+    });
+
+    it('returns baseAmount for month outside segments', () => {
+      const segs = [{ start_month: 4, end_month: 8, value: 500, is_absolute: true }];
+      expect(getValueFromSegments(1, segs, 100)).toBe(100);
+      expect(getValueFromSegments(10, segs, 100)).toBe(100);
+    });
+
+    it('uses incremental segment correctly', () => {
+      const segs = [
+        { start_month: 1, end_month: 3, value: 1000, is_absolute: true },
+        { start_month: 4, end_month: 6, value: 500, is_absolute: false },
+      ];
+      expect(getValueFromSegments(1, segs, 0)).toBe(1000);
+      expect(getValueFromSegments(4, segs, 0)).toBe(1500); // 1000 + 500
+      expect(getValueFromSegments(6, segs, 0)).toBe(1500);
+    });
+
+    it('applies growth_segments in projection', () => {
+      const item = makeAssumption({
+        amount: 0,
+        category: 'revenue',
+        growth_segments: [
+          { start_month: 1, end_month: 2, value: 400, is_absolute: true },
+          { start_month: 3, end_month: 6, value: 500, is_absolute: true },
+        ],
+      });
+      const result = calculateProjection([item], undefined, 6);
+      expect(result.totals.revenue[0].value).toBe(400);
+      expect(result.totals.revenue[1].value).toBe(400);
+      expect(result.totals.revenue[2].value).toBe(500);
+      expect(result.totals.revenue[5].value).toBe(500);
     });
   });
 });

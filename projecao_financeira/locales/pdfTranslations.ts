@@ -13,6 +13,10 @@ interface TranslationTerms {
     total: string;
   };
 
+  sections: {
+    metrics: string;
+    cash: string;
+  };
   rows: {
     revenue: string;
     taxes_sale: string;
@@ -20,6 +24,7 @@ interface TranslationTerms {
     costs_variable: string;
     contribution_margin: string;
     costs_fixed: string;
+    personnel: string;
     ebitda: string;
     depreciation: string;
     ebit: string;
@@ -49,6 +54,7 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
     scenario: "Cenário",
     currency: "Moeda",
     headers: { account: "Contas / Estrutura", setup: "Setup (Mês 0)", total: "Total Acumulado" },
+    sections: { metrics: "MÉTRICAS", cash: "CAIXA" },
     rows: {
       revenue: "(+) Receita Bruta",
       taxes_sale: "(-) Impostos s/ Venda",
@@ -56,6 +62,7 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
       costs_variable: "(-) Custos Variáveis",
       contribution_margin: "(=) Margem de Contribuição",
       costs_fixed: "(-) Custos Fixos (OpEx)",
+      personnel: "(-) Pessoal",
       ebitda: "(=) EBITDA",
       depreciation: "(-) Depreciação",
       ebit: "(=) EBIT",
@@ -81,6 +88,7 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
     scenario: "Scenario",
     currency: "Currency",
     headers: { account: "Accounts / Structure", setup: "Setup (Month 0)", total: "Total Year" },
+    sections: { metrics: "METRICS", cash: "CASH" },
     rows: {
       revenue: "(+) Gross Revenue",
       taxes_sale: "(-) Sales Taxes",
@@ -88,6 +96,7 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
       costs_variable: "(-) Variable Costs (COGS)",
       contribution_margin: "(=) Contribution Margin",
       costs_fixed: "(-) Fixed Costs (OpEx)",
+      personnel: "(-) Personnel",
       ebitda: "(=) EBITDA",
       depreciation: "(-) Depreciation",
       ebit: "(=) EBIT",
@@ -113,6 +122,7 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
     scenario: "Escenario",
     currency: "Moneda",
     headers: { account: "Cuentas / Estructura", setup: "Setup (Mes 0)", total: "Total Acumulado" },
+    sections: { metrics: "MÉTRICAS", cash: "CAJA" },
     rows: {
       revenue: "(+) Ingresos Brutos",
       taxes_sale: "(-) Impuestos s/ Ventas",
@@ -120,6 +130,7 @@ export const translations: Record<PdfLanguage, TranslationTerms> = {
       costs_variable: "(-) Costos Variables",
       contribution_margin: "(=) Margen de Contribución",
       costs_fixed: "(-) Gastos Fijos (OpEx)",
+      personnel: "(-) Personal",
       ebitda: "(=) EBITDA",
       depreciation: "(-) Depreciación",
       ebit: "(=) EBIT",

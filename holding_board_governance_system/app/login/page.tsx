@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [logoError, setLogoError] = useState(false)
   const router = useRouter()
 
   const supabase = createBrowserClient(
@@ -55,8 +56,19 @@ export default function LoginPage() {
 
       <Card className="w-full max-w-md border-slate-800 bg-slate-900/60 backdrop-blur-2xl text-white z-10 shadow-2xl">
         <CardHeader className="text-center pb-6">
-          <div className="mx-auto w-28 h-28 flex items-center justify-center mb-4">
-            <Image src="/logo-basegroup.png" alt="Base Group" width={112} height={112} className="object-contain" />
+          <div className="mx-auto w-28 h-28 flex items-center justify-center mb-4 rounded-xl border border-slate-700 bg-black/50">
+            {logoError ? (
+              <span className="font-bold text-5xl text-white">H</span>
+            ) : (
+              <Image
+                src="/logo-basegroup.png"
+                alt="Base Group"
+                width={112}
+                height={112}
+                className="object-contain"
+                onError={() => setLogoError(true)}
+              />
+            )}
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight text-white">Holding Board</CardTitle>
           <CardDescription className="text-slate-400 font-medium">

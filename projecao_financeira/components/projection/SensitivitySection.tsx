@@ -44,9 +44,10 @@ export function SensitivitySection() {
 
   const vpnBase = tornadoData[0]?.vpnBase ?? 0;
 
+  const locale = targetCurrency === 'BRL' ? 'pt-BR' : 'en-US';
   const formatMoney = (val: number) => {
     const converted = val / exchangeRate;
-    return new Intl.NumberFormat("pt-BR", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: targetCurrency,
       maximumFractionDigits: 0,
@@ -56,7 +57,7 @@ export function SensitivitySection() {
   const formatCompact = (val: any) => {
     const n = Number(val);
     if (isNaN(n)) return "-";
-    return new Intl.NumberFormat("pt-BR", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: targetCurrency,
       notation: "compact",

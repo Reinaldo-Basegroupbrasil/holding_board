@@ -9,9 +9,6 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Holding Board Governance",
   description: "Sistema de Governança Multi-Jurisdicional",
-  icons: {
-    icon: "/logo-basegroup.png",
-  },
 };
 
 export default function RootLayout({

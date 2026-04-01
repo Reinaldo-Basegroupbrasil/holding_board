@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Project, ProjectionSummary, Scenario } from '@/types';
+import { Project, ProjectionSummary, Scenario, ProjectionItemDetail, MonthlyData } from '@/types';
 import { translations, PdfLanguage } from '@/locales/pdfTranslations';
 
 interface GeneratorProps {
@@ -10,9 +10,21 @@ interface GeneratorProps {
   lang: PdfLanguage;
   chartElementId?: string;
   taxConfig?: { mode: 'manual' | 'auto'; rate: number };
+  includeDetails?: boolean;
 }
 
-export async function generatePDF({ project, scenario, projection, lang, taxConfig }: GeneratorProps) {
+function getYearlyValue(data: MonthlyData[], yearIndex: number, mode: 'sum' | 'last_value' = 'sum'): number {
+  if (!data || data.length === 0) return 0;
+  if (mode === 'last_value') {
+    const end = yearIndex * 12 + 11;
+    return end < data.length ? (data[end]?.value ?? 0) : 0;
+  }
+  const start = yearIndex * 12;
+  const end = start + 12;
+  return data.slice(start, end).reduce((acc, curr) => acc + (curr?.value ?? 0), 0);
+}
+
+export async function generatePDF({ project, scenario, projection, lang, taxConfig, includeDetails = false }: GeneratorProps) {
   const t = translations[lang];
   const doc = new jsPDF('l', 'mm', 'a4'); // Landscape
 
@@ -68,41 +80,138 @@ export async function generatePDF({ project, scenario, projection, lang, taxConf
       t.headers.total
     ];
 
-    const createRow = (label: string, fullDataArray: any[], preOpValue: number, isTotalRow = false) => {
-      // Proteção contra undefined
+    const createRow = (label: string, fullDataArray: any[], preOpValue: number, _isTotalRow = false) => {
       if (!fullDataArray) return [label, "-", ...Array(sliceLength).fill("-"), "-"];
-
       const yearData = fullDataArray.slice(startMonth, endMonth);
       const yearSum = yearData.reduce((a: number, b: any) => a + (b.value || 0), 0);
       let firstColVal = "-";
-      if (showSetup) {
-        firstColVal = fmt(preOpValue);
-      }
+      if (showSetup) firstColVal = fmt(preOpValue);
       return [label, firstColVal, ...yearData.map((m: any) => fmt(m.value)), fmt(yearSum)];
     };
 
-    // CORREÇÃO: preOperational agora está na raiz de 'projection', não dentro de 'totals'
-    const T = projection.totals;
-    const P = projection.preOperational; 
+    const fmtByType = (val: number, itemFormat?: string) => {
+      if (Math.abs(val) < 0.01) return "-";
+      if (itemFormat === 'percent') return new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'pt-BR', { maximumFractionDigits: 1 }).format(val) + "%";
+      if (itemFormat === 'number') return new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'pt-BR', { maximumFractionDigits: 0 }).format(val);
+      return fmt(val);
+    };
 
-    const bodyData = [
+    const createRowFromItem = (item: ProjectionItemDetail, indent = false) => {
+      const label = indent ? `  ${item.name}` : item.name;
+      const yearData = (item.data || []).slice(startMonth, endMonth);
+      const yearVal = getYearlyValue(item.data || [], yearIndex, item.yearly_display || 'sum');
+      let firstColVal = "-";
+      if (showSetup) firstColVal = fmtByType(item.preOperationalValue ?? 0, item.format);
+      return [label, firstColVal, ...yearData.map((m) => fmtByType(m?.value ?? 0, item.format)), fmtByType(yearVal, item.format)];
+    };
+
+    const T = projection.totals;
+    const P = projection.preOperational;
+    const items = projection.items || [];
+
+    let bodyData: (string | number)[][];
+
+    if (includeDetails) {
+      bodyData = [];
+      const baseItems = items.filter((i) => i.category === 'base');
+      const parentBaseItems = baseItems.filter((i) => !i.driver_id);
+      const childBaseItems = baseItems.filter((i) => i.driver_id);
+
+      if (baseItems.length > 0) {
+        bodyData.push([t.sections.metrics, "", ...Array(sliceLength).fill(""), ""]);
+        parentBaseItems.forEach((parent) => {
+          bodyData.push(createRowFromItem(parent));
+          childBaseItems.filter((c) => c.driver_id === parent.assumptionId).forEach((child) => {
+            bodyData.push(createRowFromItem(child, true));
+          });
+        });
+        childBaseItems
+          .filter((c) => !parentBaseItems.some((p) => p.assumptionId === c.driver_id))
+          .forEach((orphan) => bodyData.push(createRowFromItem(orphan)));
+        bodyData.push(['', '', ...Array(sliceLength).fill(''), '']);
+      }
+
+      const categoryConfig: { key: string; label: string; isTotal?: boolean }[] = [
+        { key: 'revenue', label: t.rows.revenue },
+        { key: 'tax', label: t.rows.taxes_sale },
+        { key: '_net_revenue', label: t.rows.net_revenue, isTotal: true },
+        { key: 'cost_variable', label: t.rows.costs_variable },
+        { key: '_contribution', label: t.rows.contribution_margin, isTotal: true },
+        { key: 'cost_fixed', label: t.rows.costs_fixed },
+        { key: 'personnel', label: t.rows.personnel },
+        { key: '_ebitda', label: t.rows.ebitda, isTotal: true },
+        { key: 'investment', label: t.rows.depreciation },
+        { key: '_ebit', label: t.rows.ebit, isTotal: true },
+        { key: 'financial_revenue', label: t.rows.financial_revenue },
+        { key: 'financial_expense', label: t.rows.financial_expense },
+        { key: '_ebt', label: t.rows.ebt, isTotal: true },
+        { key: 'tax_profit', label: t.rows.taxes_profit },
+        { key: '_net_result', label: t.rows.net_result, isTotal: true },
+      ];
+
+      const totalsMap: Record<string, { data: any[]; preOp: number }> = {
+        revenue: [T.revenue, P.revenue],
+        tax: [T.taxes_sale, P.taxes_sale],
+        _net_revenue: [T.net_revenue, P.revenue - P.taxes_sale],
+        cost_variable: [T.costs_variable, P.costs_variable],
+        _contribution: [T.contribution_margin, 0],
+        cost_fixed: [T.costs_fixed, P.costs_fixed],
+        personnel: [T.personnel, P.personnel],
+        _ebitda: [T.ebitda, P.ebitda],
+        investment: [T.depreciation, P.depreciation],
+        _ebit: [T.ebit, P.ebit],
+        financial_revenue: [T.financial_revenue, P.financial_revenue],
+        financial_expense: [T.financial_expense, P.financial_expense],
+        _ebt: [T.ebt, P.ebt],
+        tax_profit: [T.tax_profit, P.tax_profit],
+        _net_result: [T.net_result, P.net_result],
+      } as any;
+
+      const categoryToItems: Record<string, string[]> = {
+        revenue: ['revenue'],
+        tax: ['tax'],
+        cost_variable: ['cost_variable', 'variable_cost'],
+        cost_fixed: ['cost_fixed', 'fixed_cost'],
+        personnel: ['personnel'],
+        investment: ['investment'],
+        financial_revenue: ['financial_revenue'],
+        financial_expense: ['financial_expense'],
+        tax_profit: ['tax_profit'],
+      };
+
+      categoryConfig.forEach(({ key, label, isTotal }) => {
+        const tot = totalsMap[key];
+        if (tot) bodyData.push(createRow(label, tot.data, tot.preOp ?? 0));
+        const itemCats = categoryToItems[key];
+        if (itemCats && !isTotal) {
+          items.filter((i) => itemCats.includes(i.category)).forEach((it) => bodyData.push(createRowFromItem(it, true)));
+        }
+      });
+
+      bodyData.push(['', '', ...Array(sliceLength).fill(''), '']);
+      bodyData.push([t.sections.cash, '', ...Array(sliceLength).fill(''), '']);
+      bodyData.push(createRow(t.rows.cash_flow, T.cash_flow, P.cash_flow));
+      bodyData.push(createRow(t.rows.accumulated_cash, T.cash_accumulated, P.cash_accumulated));
+    } else {
+      bodyData = [
         createRow(t.rows.revenue, T.revenue, P.revenue),
         createRow(t.rows.taxes_sale, T.taxes_sale, P.taxes_sale),
-        createRow(t.rows.net_revenue, T.net_revenue, (P.revenue - P.taxes_sale), true), // Usando net_revenue calculado
+        createRow(t.rows.net_revenue, T.net_revenue, P.revenue - P.taxes_sale),
         createRow(t.rows.costs_variable, T.costs_variable, P.costs_variable),
-        createRow(t.rows.contribution_margin, T.contribution_margin, 0, true),
+        createRow(t.rows.contribution_margin, T.contribution_margin, 0),
         createRow(t.rows.costs_fixed, T.costs_fixed, P.costs_fixed),
-        createRow(t.rows.ebitda, T.ebitda, P.ebitda, true),
+        createRow(t.rows.ebitda, T.ebitda, P.ebitda),
         createRow(t.rows.depreciation, T.depreciation, P.depreciation),
         createRow(t.rows.ebit, T.ebit, P.ebit),
         createRow(t.rows.financial_revenue, T.financial_revenue, P.financial_revenue),
         createRow(t.rows.financial_expense, T.financial_expense, P.financial_expense),
         createRow(t.rows.taxes_profit, T.tax_profit, P.tax_profit),
-        createRow(t.rows.net_result, T.net_result, P.net_result, true),
-        ['', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+        createRow(t.rows.net_result, T.net_result, P.net_result),
+        ['', '', ...Array(sliceLength).fill(''), ''],
         createRow(t.rows.cash_flow, T.cash_flow, P.cash_flow),
-        createRow(t.rows.accumulated_cash, T.cash_accumulated, P.cash_accumulated, true),
-    ];
+        createRow(t.rows.accumulated_cash, T.cash_accumulated, P.cash_accumulated),
+      ];
+    }
 
     autoTable(doc, {
         startY: currentY,
