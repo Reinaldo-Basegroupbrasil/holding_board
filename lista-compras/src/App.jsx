@@ -46,6 +46,8 @@ export default function App() {
   const [isImportNotaOpen, setIsImportNotaOpen] = useState(false);
   const [itensNota, setItensNota] = useState([]);
   const [importNotaSaving, setImportNotaSaving] = useState(false);
+  /** Índice da linha em que está ocorrendo insert "Criar produto" (null = nenhum) */
+  const [importNotaCreatingIndex, setImportNotaCreatingIndex] = useState(null);
 
   // Salvar preferências
   useEffect(() => { localStorage.setItem('mercado_mode', shoppingMode); }, [shoppingMode]);
@@ -133,6 +135,12 @@ export default function App() {
     const trimmed = String(val ?? '').trim();
     setProducts(prev => prev.map(p => p.id === id ? { ...p, corredor: trimmed } : p));
     if (supabase) await supabase.from('produtos').update({ corredor: trimmed || null }).eq('id', id);
+  };
+
+  const updateEstoque = async (id, raw) => {
+    const n = raw === '' || raw === undefined ? 0 : Math.max(0, parseStock(raw));
+    setProducts(prev => prev.map(p => (p.id === id ? { ...p, estoque_em_casa: n } : p)));
+    if (supabase) await supabase.from('produtos').update({ estoque_em_casa: n }).eq('id', id);
   };
 
   const handleDelete = async (id) => {
@@ -242,7 +250,7 @@ export default function App() {
           const precoMatch = col1.match(/Vl\. Unit\.:\s*([\d,]+)/);
           const preco = precoMatch ? parseFloat(precoMatch[1].replace(',', '.')) : 0;
           if (!itensExtraidos.find(row => row.nome === nome)) {
-            itensExtraidos.push({ nome, preco, produtoVinculado: '' });
+            itensExtraidos.push({ nome, preco, produtoVinculado: '', marcaNota: '' });
           }
         }
       }
@@ -256,9 +264,41 @@ export default function App() {
     setItensNota(prev => prev.map((row, idx) => (idx === index ? { ...row, produtoVinculado } : row)));
   };
 
+  const setNotaMarca = (index, marcaNota) => {
+    setItensNota(prev => prev.map((row, idx) => (idx === index ? { ...row, marcaNota } : row)));
+  };
+
   const closeImportNota = () => {
     setIsImportNotaOpen(false);
     setItensNota([]);
+  };
+
+  const criarProdutoDaNota = async (index) => {
+    const item = itensNota[index];
+    if (!supabase || !item || item.produtoVinculado) return;
+    setImportNotaCreatingIndex(index);
+    try {
+      const marca = String(item.marcaNota ?? '').trim();
+      const payload = {
+        nome: item.nome,
+        marca: marca || '',
+        categoria: 'Geral',
+        corredor: '',
+        quantidade: 2,
+        preco_unitario: item.preco ?? 0,
+        estoque_em_casa: 0,
+        comprar: true
+      };
+      const { data, error } = await supabase.from('produtos').insert([payload]).select('id').single();
+      if (error) throw error;
+      const newId = data.id;
+      setItensNota(prev => prev.map((row, idx) => (idx === index ? { ...row, produtoVinculado: String(newId) } : row)));
+      await fetchProducts();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setImportNotaCreatingIndex(null);
+    }
   };
 
   const handleFinalizarNota = async () => {
@@ -270,7 +310,10 @@ export default function App() {
     setImportNotaSaving(true);
     try {
       for (const item of toUpdate) {
-        await supabase.from('produtos').update({ preco_unitario: item.preco }).eq('id', item.produtoVinculado);
+        const patch = { preco_unitario: item.preco };
+        const m = String(item.marcaNota ?? '').trim();
+        if (m) patch.marca = m;
+        await supabase.from('produtos').update(patch).eq('id', item.produtoVinculado);
       }
       await fetchProducts();
       setItensNota([]);
@@ -412,9 +455,21 @@ export default function App() {
                   <span className="bg-slate-100 px-2 py-0.5 rounded font-medium border">{product.marca || '-'}</span>
                   <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-medium border border-blue-100">{product.categoria}</span>
                   {!shoppingMode && (
-                    <span className="bg-violet-50 text-violet-800 px-2 py-0.5 rounded font-bold border border-violet-200">
-                      Estoque: {parseStock(product.estoque_em_casa)}
-                    </span>
+                    <label className="inline-flex items-center gap-1.5 bg-violet-50 text-violet-800 px-2 py-0.5 rounded font-bold border border-violet-200 cursor-text">
+                      <span className="text-[10px] uppercase font-semibold shrink-0">Estoque</span>
+                      <input
+                        type="number"
+                        min="0"
+                        defaultValue={parseStock(product.estoque_em_casa)}
+                        key={`est-${product.id}-${product.estoque_em_casa}`}
+                        onBlur={(e) => {
+                          const next = e.target.value === '' ? 0 : parseStock(e.target.value);
+                          if (next !== parseStock(product.estoque_em_casa)) updateEstoque(product.id, e.target.value);
+                        }}
+                        className="w-12 min-w-0 px-1 py-0.5 text-xs font-bold text-center border border-violet-300 rounded bg-white text-violet-900 outline-none focus:ring-2 focus:ring-violet-400"
+                        aria-label="Estoque em casa"
+                      />
+                    </label>
                   )}
                   {!shoppingMode && product.corredor && (
                     <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded font-medium border border-yellow-200">{product.corredor}</span>
@@ -549,23 +604,55 @@ export default function App() {
                 <p className="text-sm font-semibold text-slate-700">Vincule cada item à um produto</p>
                 <ul className="space-y-4 max-h-[40vh] overflow-y-auto pr-1">
                   {itensNota.map((item, index) => (
-                    <li key={`${item.nome}-${index}`} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 border-b border-slate-100 pb-3 last:border-0">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-800 text-sm leading-snug">{item.nome}</p>
-                        <p className="text-emerald-700 font-mono font-bold text-sm">
-                          R$ {item.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
+                    <li key={`${item.nome}-${index}`} className="flex flex-col gap-2 border-b border-slate-100 pb-3 last:border-0">
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-slate-800 text-sm leading-snug">{item.nome}</p>
+                          <p className="text-emerald-700 font-mono font-bold text-sm">
+                            R$ {item.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="w-full sm:w-56 shrink-0 flex flex-col gap-2">
+                          <select
+                            value={item.produtoVinculado}
+                            onChange={(e) => setNotaVinculo(index, e.target.value)}
+                            className="w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            <option value="">Selecione o produto…</option>
+                            {products.map(p => (
+                              <option key={p.id} value={p.id}>{p.nome}</option>
+                            ))}
+                          </select>
+                          <div>
+                            <label className="block text-[11px] text-slate-500 mb-0.5">Marca (opcional)</label>
+                            <input
+                              type="text"
+                              value={item.marcaNota ?? ''}
+                              onChange={(e) => setNotaMarca(index, e.target.value)}
+                              placeholder="Usada ao criar ou ao finalizar"
+                              className="w-full p-2 border border-slate-200 rounded-lg bg-white text-sm text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
+                            />
+                          </div>
+                          {!item.produtoVinculado && (
+                            <button
+                              type="button"
+                              disabled={importNotaSaving || importNotaCreatingIndex !== null}
+                              onClick={() => criarProdutoDaNota(index)}
+                              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border-2 border-dashed border-emerald-300 bg-emerald-50/80 text-emerald-800 text-xs font-bold uppercase tracking-wide hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {importNotaCreatingIndex === index ? (
+                                <RefreshCw className="animate-spin shrink-0" size={16} />
+                              ) : (
+                                <Plus className="shrink-0" size={16} />
+                              )}
+                              Criar produto
+                            </button>
+                          )}
+                          {item.produtoVinculado && (
+                            <p className="text-[11px] text-emerald-700 font-semibold">Produto vinculado — ajuste no select se precisar</p>
+                          )}
+                        </div>
                       </div>
-                      <select
-                        value={item.produtoVinculado}
-                        onChange={(e) => setNotaVinculo(index, e.target.value)}
-                        className="w-full sm:w-56 min-w-0 p-2.5 border border-slate-200 rounded-lg bg-slate-50 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="">Selecione o produto…</option>
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>{p.nome}</option>
-                        ))}
-                      </select>
                     </li>
                   ))}
                 </ul>
