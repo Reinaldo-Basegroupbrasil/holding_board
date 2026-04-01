@@ -182,6 +182,60 @@ export default function App() {
     }
   };
 
+  const finalizarMercado = async () => {
+    const pegos = products.filter(p => p.in_cart);
+    if (!supabase) {
+      alert('Supabase não configurado.');
+      return;
+    }
+    if (pegos.length === 0) {
+      alert('Nenhum item marcado como pego no carrinho.');
+      return;
+    }
+    const dataCompra = new Date().toISOString();
+    try {
+      const erros = await Promise.all(
+        pegos.map(p =>
+          supabase
+            .from('produtos')
+            .update({
+              ultima_quantidade_comprada: p.quantidade,
+              comprar: false,
+              in_cart: false,
+              data_ultima_compra: dataCompra
+            })
+            .eq('id', p.id)
+            .then(({ error }) => error)
+        )
+      );
+      const primeiroErr = erros.find(Boolean);
+      if (primeiroErr) throw primeiroErr;
+      setProducts(prev =>
+        prev.map(pr => {
+          if (!pr.in_cart) return pr;
+          return {
+            ...pr,
+            ultima_quantidade_comprada: pr.quantidade,
+            comprar: false,
+            in_cart: false,
+            data_ultima_compra: dataCompra
+          };
+        })
+      );
+      alert('Compra finalizada com sucesso!');
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const repetirUltimaCompra = async (p) => {
+    const q = Number(p.ultima_quantidade_comprada) || 0;
+    if (q <= 0) return;
+    const patch = { quantidade: q, comprar: true };
+    setProducts(prev => prev.map(pr => (pr.id === p.id ? { ...pr, ...patch } : pr)));
+    if (supabase) await supabase.from('produtos').update(patch).eq('id', p.id);
+  };
+
   // --- MODAL ---
   const handleEdit = (p) => {
     setEditingId(p.id);
@@ -382,6 +436,16 @@ export default function App() {
             />
             {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-2.5 text-white/60 hover:text-white"><X size={16}/></button>}
           </div>
+
+          {shoppingMode && (
+            <button
+              type="button"
+              onClick={finalizarMercado}
+              className="mt-3 w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-bold uppercase tracking-wide shadow-lg shadow-emerald-900/20 border border-emerald-300/30 transition active:scale-[0.99]"
+            >
+              Finalizar Mercado
+            </button>
+          )}
         </div>
       </header>
 
@@ -473,6 +537,20 @@ export default function App() {
                   )}
                   {!shoppingMode && product.corredor && (
                     <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded font-medium border border-yellow-200">{product.corredor}</span>
+                  )}
+                  {!shoppingMode && Number(product.ultima_quantidade_comprada) > 0 && (
+                    <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
+                      Última compra: {Number(product.ultima_quantidade_comprada)} unid.
+                      <button
+                        type="button"
+                        title="Repetir quantidade na lista"
+                        onClick={() => repetirUltimaCompra(product)}
+                        className="p-0.5 rounded hover:bg-slate-200 text-slate-700 hover:text-emerald-700 transition"
+                        aria-label="Repetir última compra"
+                      >
+                        <RefreshCw size={13} strokeWidth={2.5} />
+                      </button>
+                    </span>
                   )}
                 </div>
               </div>
