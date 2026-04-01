@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // Importação segura para funcionar local e na web
 import { createClient } from 'https://esm.sh/@supabase/supabase-js';
-import { ShoppingCart, Check, Trash2, Plus, X, Save, RefreshCw, Pencil, Store, Home, ListRestart, Search, FileText } from 'lucide-react';
+import { ShoppingCart, Check, Trash2, Plus, Minus, X, Save, RefreshCw, Pencil, Store, Home, ListRestart, Search, FileText } from 'lucide-react';
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
 const getEnv = (key) => { try { return import.meta.env[key]; } catch { return ''; } };
@@ -143,6 +143,13 @@ export default function App() {
     if (supabase) await supabase.from('produtos').update({ estoque_em_casa: n }).eq('id', id);
   };
 
+  const deltaEstoque = (id, delta) => {
+    const p = products.find(x => x.id === id);
+    if (!p) return;
+    const novo = Math.max(0, parseStock(p.estoque_em_casa) + delta);
+    updateEstoque(id, String(novo));
+  };
+
   const handleDelete = async (id) => {
     if (window.confirm('Tem certeza que deseja EXCLUIR este produto?')) {
       setProducts(prev => prev.filter(p => p.id !== id));
@@ -232,6 +239,14 @@ export default function App() {
     const q = Number(p.ultima_quantidade_comprada) || 0;
     if (q <= 0) return;
     const patch = { quantidade: q, comprar: true };
+    setProducts(prev => prev.map(pr => (pr.id === p.id ? { ...pr, ...patch } : pr)));
+    if (supabase) await supabase.from('produtos').update(patch).eq('id', p.id);
+  };
+
+  const aplicarSugestaoReposicao = async (p) => {
+    const sugestao = Number(p.ultima_quantidade_comprada || 0) - parseStock(p.estoque_em_casa);
+    if (sugestao <= 0) return;
+    const patch = { quantidade: sugestao, comprar: true };
     setProducts(prev => prev.map(pr => (pr.id === p.id ? { ...pr, ...patch } : pr)));
     if (supabase) await supabase.from('produtos').update(patch).eq('id', p.id);
   };
@@ -465,7 +480,9 @@ export default function App() {
       {/* LISTA */}
       <main className="max-w-3xl mx-auto p-3 space-y-3 mt-2">
         {loading && <p className="text-center text-slate-500">Carregando...</p>}
-        {!loading && filteredProducts.map(product => (
+        {!loading && filteredProducts.map((product) => {
+          const sugestao = Number(product.ultima_quantidade_comprada || 0) - parseStock(product.estoque_em_casa);
+          return (
           <div key={product.id} className={`bg-white p-4 rounded-xl shadow-sm border-l-4 flex flex-col gap-3 transition-all duration-300 ${shoppingMode && product.in_cart ? 'border-gray-300 opacity-50 bg-gray-50 scale-95' : product.comprar ? 'border-emerald-500 opacity-100' : 'border-slate-300 opacity-60'}`}>
             
             <div className="flex items-start gap-3">
@@ -519,8 +536,17 @@ export default function App() {
                   <span className="bg-slate-100 px-2 py-0.5 rounded font-medium border">{product.marca || '-'}</span>
                   <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-medium border border-blue-100">{product.categoria}</span>
                   {!shoppingMode && (
-                    <label className="inline-flex items-center gap-1.5 bg-violet-50 text-violet-800 px-2 py-0.5 rounded font-bold border border-violet-200 cursor-text">
-                      <span className="text-[10px] uppercase font-semibold shrink-0">Estoque</span>
+                    <span className="inline-flex items-center gap-0.5 bg-violet-50 text-violet-800 px-1 py-0.5 rounded font-bold border border-violet-200">
+                      <span className="text-[10px] uppercase font-semibold pl-1 shrink-0">Estoque</span>
+                      <button
+                        type="button"
+                        onClick={() => deltaEstoque(product.id, -1)}
+                        disabled={parseStock(product.estoque_em_casa) <= 0}
+                        className="p-1 rounded hover:bg-violet-100 disabled:opacity-30 disabled:pointer-events-none text-violet-900"
+                        aria-label="Diminuir estoque"
+                      >
+                        <Minus size={14} strokeWidth={2.5} />
+                      </button>
                       <input
                         type="number"
                         min="0"
@@ -530,10 +556,18 @@ export default function App() {
                           const next = e.target.value === '' ? 0 : parseStock(e.target.value);
                           if (next !== parseStock(product.estoque_em_casa)) updateEstoque(product.id, e.target.value);
                         }}
-                        className="w-12 min-w-0 px-1 py-0.5 text-xs font-bold text-center border border-violet-300 rounded bg-white text-violet-900 outline-none focus:ring-2 focus:ring-violet-400"
+                        className="w-10 min-w-0 px-0.5 py-0.5 text-xs font-bold text-center border border-violet-300 rounded bg-white text-violet-900 outline-none focus:ring-2 focus:ring-violet-400"
                         aria-label="Estoque em casa"
                       />
-                    </label>
+                      <button
+                        type="button"
+                        onClick={() => deltaEstoque(product.id, 1)}
+                        className="p-1 rounded hover:bg-violet-100 text-violet-900"
+                        aria-label="Aumentar estoque"
+                      >
+                        <Plus size={14} strokeWidth={2.5} />
+                      </button>
+                    </span>
                   )}
                   {!shoppingMode && product.corredor && (
                     <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded font-medium border border-yellow-200">{product.corredor}</span>
@@ -551,6 +585,15 @@ export default function App() {
                         <RefreshCw size={13} strokeWidth={2.5} />
                       </button>
                     </span>
+                  )}
+                  {!shoppingMode && sugestao > 0 && !product.comprar && (
+                    <button
+                      type="button"
+                      onClick={() => aplicarSugestaoReposicao(product)}
+                      className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-900 px-2 py-1 rounded-md border border-indigo-200 text-[11px] font-semibold hover:bg-indigo-100 transition shadow-sm"
+                    >
+                      💡 Sugerido: {sugestao} un.
+                    </button>
                   )}
                 </div>
               </div>
@@ -579,7 +622,8 @@ export default function App() {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
         <div className="h-24"></div>
       </main>
 
